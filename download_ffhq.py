@@ -341,7 +341,7 @@ def recreate_aligned_images(json_data, dst_dir='realign1024x1024', output_size=1
 
 #----------------------------------------------------------------------------
 
-def run(tasks, **download_kwargs):
+def run(tasks, train, **download_kwargs):
     if not os.path.isfile(json_spec['file_path']) or not os.path.isfile('LICENSE.txt'):
         print('Downloading JSON metadata...')
         download_files([json_spec, license_specs['json']], **download_kwargs)
@@ -353,20 +353,26 @@ def run(tasks, **download_kwargs):
     if 'stats' in tasks:
         print_statistics(json_data)
 
+    category = 'training' if train else 'validation'
     specs = []
     if 'images' in tasks:
-        specs += [item['image'] for item in json_data.values()] + [license_specs['images']]
+        specs += [item['image'] for item in json_data.values() if item['category'] == category] + [license_specs['images']]
     if 'thumbs' in tasks:
-        specs += [item['thumbnail'] for item in json_data.values()] + [license_specs['thumbs']]
+        specs += [item['thumbnail'] for item in json_data.values() if item['category'] == category] + [license_specs['thumbs']]
     if 'wilds' in tasks:
-        specs += [item['in_the_wild'] for item in json_data.values()] + [license_specs['wilds']]
+        specs += [item['in_the_wild'] for item in json_data.values() if item['category'] == category] + [license_specs['wilds']]
     if 'tfrecords' in tasks:
         specs += tfrecords_specs + [license_specs['tfrecords']]
 
     if len(specs):
         print('Downloading %d files...' % len(specs))
         np.random.shuffle(specs) # to make the workload more homogeneous
+
+        dir_path = 'train' if train else 'val'
+        os.makedirs(dir_path, exist_ok=True)
+        os.chdir(dir_path)
         download_files(specs, **download_kwargs)
+        os.chdir('..')
 
     if 'align' in tasks:
         recreate_aligned_images(json_data)
