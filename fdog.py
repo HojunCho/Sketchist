@@ -16,9 +16,9 @@ class Sobel(nn.Module):
     def __init__(self):
         super(Sobel, self).__init__()        
         kernel = torch.tensor([
-            [-1., 0., 1.],
-            [-2., 0., 2.],
-            [-1., 0., 1.]
+            [-1., -2., -1.],
+            [ 0.,  0.,  0.],
+            [ 1.,  2.,  1.]
         ])
         self.kernel = torch.stack([kernel, kernel.transpose(0, 1)])
 
@@ -47,6 +47,7 @@ class ETF(nn.Module):
         sobel_mag_padded = self.padding(sobel_mag)
         sobel_X = sobel_mag.unsqueeze(dim=1)
 
+        _show_arrows(sobel[0,:,:,:])
         tang = sobel.flip(dims=[1]) * torch.tensor([-1., 1.]).view(1, 2, 1, 1)
         tang_mag = torch.norm(tang, p=None, dim=1, keepdim=True)
         tang_mag[tang_mag == 0] = 1
@@ -80,13 +81,13 @@ def _guassian_pdf(x, sigma):
 
 class DoG(nn.Module):
 
-    def __init__(self, sigma_c, rho):
+    def __init__(self, sigma_c=1.0, rho=0.99):
         super(DoG, self).__init__()
         self.sigma_c = sigma_c
         self.sigma_s = sigma_c * 1.6
         self.rho = rho
 
-        self.max_T = 3
+        self.max_T = math.floor(sigma_c * 3)
         self.delta = 1
 
     def forward(self, images, etf):
@@ -95,6 +96,7 @@ class DoG(nn.Module):
         
         dog = torch.zeros_like(images)
         per = etf.flip(dims=[1]) * torch.tensor([-1., 1.]).view(1, 2, 1, 1)
+        total_weight = 0.
         for t in range(-self.max_T, self.max_T + 1):
             points = indices + self.delta * per * t
             points[:,0,:,:] = points[:,0,:,:].clamp(min=0, max=x-1)
@@ -102,10 +104,58 @@ class DoG(nn.Module):
             points = torch.round(points).to(dtype=torch.long)
 
             il_s = torch.gather(images.view(b, c, x * y), 2, (points[:,0,:,:] * y + points[:,1,:,:]).view(b, c, x * y)).view(b, c, x, y)
-            dog += il_s * (_guassian_pdf(t, self.sigma_c) - self.rho * _guassian_pdf(t, self.sigma_s))
+            gauss_weight = _guassian_pdf(t, self.sigma_c) - self.rho * _guassian_pdf(t, self.sigma_s)
+            total_weight += gauss_weight
+            dog += il_s * gauss_weight
 
+        dog /= total_weight
         return dog
             
+
+class FDoG(nn.Module):
+
+    def __init__(self, mu=5, eta=1., iterations=3, sigma_c=1.0, sigma_m=3.0, rho=0.99, tau=0.7):
+        super(FDoG, self).__init__()
+        self.etf = ETF(mu, eta, iterations)
+        self.dog = DoG(sigma_c, rho)
+        self.sigma_m = sigma_m
+        self.tau = tau
+
+        self.max_S = math.floor(sigma_m * 3)
+        self.delta = 1
+    
+    def forward(self, images):
+        etf = self.etf(images)
+        _show_arrows(etf[0,:,:,:])
+        dog = self.dog(images, etf=etf)
+        _show_images(dog[0,:,:,:])
+
+        b, c, x, y = images.shape
+
+        fdog = torch.zeros_like(images)
+        total_weight = 0.
+        for s_dir in [-1, 1]:
+            points = torch.stack(torch.meshgrid(torch.arange(0, x), torch.arange(0, y))).repeat(b, 1, 1, 1)
+            for s in range(0 if s_dir == 1 else 1, self.max_S + 1):
+                if s != 0:
+                    p_etf = torch.stack([torch.gather(etf[:,[i],:,:].view(b, x * y), 1, (points[:,0,:,:] * y + points[:,1,:,:]).view(b, x * y)).view(b, x, y) for i in range(2)], dim=1)
+                    points = points.to(dtype=images.dtype)
+                    points += self.delta * p_etf * s_dir
+                    points[:,0,:,:] = points[:,0,:,:].clamp(min=0, max=x-1)
+                    points[:,1,:,:] = points[:,1,:,:].clamp(min=0, max=y-1)
+                    points = torch.round(points).to(dtype=torch.long)
+            
+                f_s = torch.gather(dog.view(b, c, x * y), 2, (points[:,0,:,:] * y + points[:,1,:,:]).view(b, c, x * y)).view(b, c, x, y)
+                gauss_weight = _guassian_pdf(s, self.sigma_m)
+                total_weight += gauss_weight
+                fdog += f_s * gauss_weight
+
+        fdog /= total_weight
+        _show_images(fdog[0,:,:,:])
+
+        fdog = ~((fdog < 0) * (1 + torch.tanh(fdog) < self.tau))
+        return fdog.to(dtype=torch.long)
+
 
 #---------------------------------------------------------------------
 # Test code
@@ -119,9 +169,7 @@ def _show_arrows(vector_map):
 
     c, x, y = np_map.shape
     X, Y = np.meshgrid(np.arange(0, x), np.arange(0, y))
-    U = np_map[0,:,:]
-    V = np_map[1,:,:]
-    Q = plt.quiver(X, Y, U, V, units='inches')
+    Q = plt.quiver(X, Y, np_map[1,:,:], np_map[0,:,:], scale=100)
     plt.gca().invert_yaxis()
     plt.show()
 
@@ -132,22 +180,29 @@ if __name__ == "__main__":
         [transforms.Grayscale(),
          transforms.ToTensor()])
 
-    trainset = FFHQ(root='~/Data/Flickr-Face-HQ', train=False, size='thumbs', transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
+    trainset = FFHQ(root='~/Data/Flickr-Face-HQ', train=False, size='images', transform=transform)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=1,
                                               shuffle=True, num_workers=2)
 
     dataiter = iter(trainloader)
     images = dataiter.next().to(device)
     _show_images(images[0,:,:,:])
 
+    '''
     etf = ETF()
     etf.to(device)
     out = etf(images)
     _show_arrows(out[0,:,:,:])
 
-    dog = DoG(sigma_c=1.0, rho=0.99)
+    dog = DoG()
     dog.to(device)
     out = dog(images, etf=out)
+    _show_images(out[0,:,:,:])
+    '''
+
+    fdog = FDoG()
+    fdog.to(device)
+    out = fdog(images)
     _show_images(out[0,:,:,:])
 
 #---------------------------------------------------------------------
