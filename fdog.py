@@ -122,7 +122,7 @@ class DoG(nn.Module):
 
 class FDoG(nn.Module):
 
-    def __init__(self, mu=10, etf_iters=3, fdog_iters=3, sigma_c=2.0, sigma_m=5.0, rho=0.995, tau=0.6, show_progress=False):
+    def __init__(self, mu=15, etf_iters=3, fdog_iters=3, sigma_c=2.0, sigma_m=5.0, rho=0.97, tau=0.7, fill_black=False, show_progress=False):
         super(FDoG, self).__init__()
         self.etf = ETF(mu, etf_iters, show_progress)
         self.dog = DoG(sigma_c, rho)
@@ -133,9 +133,12 @@ class FDoG(nn.Module):
         self.max_S = math.floor(sigma_m * 5)
         self.delta = 1
 
+        self.fill_black = fill_black
         self.show_progress = show_progress
     
     def forward(self, images):
+        if self.fill_black:
+            images = (images - 0.5) * 2
         etf = self.etf(images)
 
         if self.show_progress:
@@ -174,6 +177,8 @@ class FDoG(nn.Module):
             if self.show_progress:
                 _show_images(fdog[0,:,:,:])
             fdog = (~((fdog < 0) * (1 + torch.tanh(fdog) < self.tau))).to(dtype=images.dtype)
+            if self.fill_black:
+                fdog = (fdog - 0.5) * 2
             if self.show_progress:
                 _show_images(fdog[0,:,:,:])
 
@@ -213,12 +218,14 @@ if __name__ == "__main__":
     images = images
     _show_images(images[0,:,:,:])
 
-    fdog = FDoG()
+    fdog = FDoG(fill_black=True)
     fdog.to(device)
     out = fdog(images)
     _show_images(out[0,:,:,:])
 
+    '''
     torchvision.utils.save_image(images[0,:,:,:], 'test_in.png')
     torchvision.utils.save_image(out[0,:,:,:], 'test_out.png')
+    '''
 
 #---------------------------------------------------------------------
