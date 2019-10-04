@@ -18,7 +18,7 @@ class Sobel(nn.Module):
         kernel = torch.tensor([
             [-1., -2., -1.],
             [ 0.,  0.,  0.],
-            [ 1.,  2.,  1.]
+            [ 1.,  2.,  1.],
         ])
         self.kernel = torch.stack([kernel, kernel.transpose(0, 1)])
 
@@ -74,7 +74,7 @@ class ETF(nn.Module):
                         tang_Y = tang_padded[:, :, self.mu:-self.mu, i:i-2*self.mu or None]
                         sobel_Y = sobel_mag_padded[:, :, self.mu:-self.mu, i:i-2*self.mu or None]
 
-                    tang += tang_Y * (sobel_Y - sobel_X + 1) * (tang_X * tang_Y).sum(dim=1, keepdim=True) / 2.
+                    tang += tang_Y * (torch.tanh(sobel_Y - sobel_X) + 1) * (tang_X * tang_Y).sum(dim=1, keepdim=True) / 2.
 
                 tang_mag = torch.norm(tang, dim=1, keepdim=True)
                 tang_mag[tang_mag == 0] = 1
@@ -95,7 +95,7 @@ class DoG(nn.Module):
         self.sigma_s = sigma_c * 1.6
         self.rho = rho
 
-        self.max_T = math.floor(sigma_c * 3)
+        self.max_T = math.ceil(self.sigma_s * 3)
         self.delta = 1
 
     def forward(self, images, etf):
@@ -122,51 +122,62 @@ class DoG(nn.Module):
 
 class FDoG(nn.Module):
 
-    def __init__(self, mu=5, iterations=3, sigma_c=3.0, sigma_m=5.0, rho=0.997, tau=0.7, show_progress=False):
+    def __init__(self, mu=10, etf_iters=3, fdog_iters=3, sigma_c=2.0, sigma_m=5.0, rho=0.995, tau=0.6, show_progress=False):
         super(FDoG, self).__init__()
-        self.etf = ETF(mu, iterations, show_progress)
+        self.etf = ETF(mu, etf_iters, show_progress)
         self.dog = DoG(sigma_c, rho)
         self.sigma_m = sigma_m
         self.tau = tau
+        self.fdog_iters = fdog_iters
 
-        self.max_S = math.floor(sigma_m * 3)
+        self.max_S = math.floor(sigma_m * 5)
         self.delta = 1
 
         self.show_progress = show_progress
     
     def forward(self, images):
         etf = self.etf(images)
-        dog = self.dog(images, etf=etf)
 
         if self.show_progress:
             _show_arrows(etf[0,:,:,:])
-            _show_images(dog[0,:,:,:])
 
         b, c, x, y = images.shape
 
         fdog = torch.zeros_like(images)
-        total_weight = 0.
-        for s_dir in [-1, 1]:
-            indices = torch.stack(torch.meshgrid(torch.arange(0, x), torch.arange(0, y))).repeat(b, 1, 1, 1)
-            points = indices.to(dtype=images.dtype)
-            for s in range(0 if s_dir == 1 else 1, self.max_S + 1):
-                if s != 0:
-                    p_etf = torch.stack([torch.gather(etf[:,[i],:,:].view(b, x * y), 1, (indices[:,0,:,:] * y + indices[:,1,:,:]).view(b, x * y)).view(b, x, y) for i in range(2)], dim=1)
-                    points += self.delta * p_etf * s_dir
-                    points[:,0,:,:] = points[:,0,:,:].clamp(min=0, max=x-1)
-                    points[:,1,:,:] = points[:,1,:,:].clamp(min=0, max=y-1)
-                    indices = torch.round(points).to(dtype=torch.long)
-            
-                f_s = torch.gather(dog.view(b, c, x * y), 2, (indices[:,0,:,:] * y + indices[:,1,:,:]).view(b, c, x * y)).view(b, c, x, y)
-                gauss_weight = _guassian_pdf(s, self.sigma_m)
-                total_weight += gauss_weight
-                fdog += f_s * gauss_weight
+        for i in range(self.fdog_iters):
+            if i != 0:
+                images = torch.min(images, fdog)
+            dog = self.dog(images, etf=etf)
+            if self.show_progress:
+                _show_images(images[0,:,:,:])
+                _show_images(dog[0,:,:,:])
 
-        fdog /= total_weight
-        if self.show_progress:
-            _show_images(fdog[0,:,:,:])
-        fdog = ~((fdog < 0) * (1 + torch.tanh(fdog) < self.tau))
-        return fdog.to(dtype=torch.long)
+            fdog = torch.zeros_like(images)
+            total_weight = 0.
+            for s_dir in [-1, 1]:
+                indices = torch.stack(torch.meshgrid(torch.arange(0, x), torch.arange(0, y))).repeat(b, 1, 1, 1)
+                points = indices.to(dtype=images.dtype)
+                for s in range(0 if s_dir == 1 else 1, self.max_S + 1):
+                    if s != 0:
+                        p_etf = torch.stack([torch.gather(etf[:,[i],:,:].view(b, x * y), 1, (indices[:,0,:,:] * y + indices[:,1,:,:]).view(b, x * y)).view(b, x, y) for i in range(2)], dim=1)
+                        points += self.delta * p_etf * s_dir
+                        points[:,0,:,:] = points[:,0,:,:].clamp(min=0, max=x-1)
+                        points[:,1,:,:] = points[:,1,:,:].clamp(min=0, max=y-1)
+                        indices = torch.round(points).to(dtype=torch.long)
+            
+                    f_s = torch.gather(dog.view(b, c, x * y), 2, (indices[:,0,:,:] * y + indices[:,1,:,:]).view(b, c, x * y)).view(b, c, x, y)
+                    gauss_weight = _guassian_pdf(s, self.sigma_m)
+                    total_weight += gauss_weight
+                    fdog += f_s * gauss_weight
+
+            fdog /= total_weight
+            if self.show_progress:
+                _show_images(fdog[0,:,:,:])
+            fdog = (~((fdog < 0) * (1 + torch.tanh(fdog) < self.tau))).to(dtype=images.dtype)
+            if self.show_progress:
+                _show_images(fdog[0,:,:,:])
+
+        return fdog
 
 
 #---------------------------------------------------------------------
@@ -191,20 +202,23 @@ if __name__ == "__main__":
 
     transform = transforms.Compose(
         [transforms.Grayscale(),
-         transforms.ToTensor(),
-         transforms.Normalize([0.5], [0.5])])
+         transforms.ToTensor()])
 
     trainset = FFHQ(root='~/Data/Flickr-Face-HQ', train=False, size='images', transform=transform)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=1,
-                                              shuffle=True, num_workers=2)
+                                              shuffle=False, num_workers=2)
 
     dataiter = iter(trainloader)
     images = dataiter.next().to(device)
+    images = images
     _show_images(images[0,:,:,:])
 
     fdog = FDoG()
     fdog.to(device)
     out = fdog(images)
     _show_images(out[0,:,:,:])
+
+    torchvision.utils.save_image(images[0,:,:,:], 'test_in.png')
+    torchvision.utils.save_image(out[0,:,:,:], 'test_out.png')
 
 #---------------------------------------------------------------------
