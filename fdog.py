@@ -31,13 +31,15 @@ class Sobel(nn.Module):
 
 class ETF(nn.Module):
 
-    def __init__(self, mu, iterations):
+    def __init__(self, mu, iterations, show_progress=False):
         super(ETF, self).__init__()
         self.mu = mu
         self.iterations = iterations
 
         self.sobel = Sobel()
         self.padding = nn.ZeroPad2d(mu)
+
+        self.show_progress = show_progress
 
     def forward(self, inputs):
         sobel = self.sobel(inputs)
@@ -46,10 +48,16 @@ class ETF(nn.Module):
         sobel_mag_padded = self.padding(sobel_mag)
         sobel_X = sobel_mag
 
+        if self.show_progress:
+            _show_arrows(sobel[0,:,:,:])
+
         tang = sobel.flip(dims=[1]) * torch.tensor([-1., 1.]).view(1, 2, 1, 1)
         tang_mag = torch.norm(tang, dim=1, keepdim=True)
         tang_mag[tang_mag == 0] = 1
         tang /= tang_mag
+
+        if self.show_progress:
+            _show_arrows(tang[0,:,:,:])
 
         for iteration in range(self.iterations):
             for ori in ['Vertical', 'Horizontal']:
@@ -66,10 +74,11 @@ class ETF(nn.Module):
                         tang_Y = tang_padded[:, :, self.mu:-self.mu, i:i-2*self.mu or None]
                         sobel_Y = sobel_mag_padded[:, :, self.mu:-self.mu, i:i-2*self.mu or None]
 
-                    tang = tang_Y * (sobel_Y - sobel_X + 1) * (tang_X * tang_Y).sum(dim=2, keepdim=True) / 2.
-                    tang_mag = torch.norm(tang, dim=1, keepdim=True)
-                    tang_mag[tang_mag == 0] = 1
-                    tang /= tang_mag
+                    tang += tang_Y * (sobel_Y - sobel_X + 1) * (tang_X * tang_Y).sum(dim=1, keepdim=True) / 2.
+
+                tang_mag = torch.norm(tang, dim=1, keepdim=True)
+                tang_mag[tang_mag == 0] = 1
+                tang /= tang_mag
 
         return tang
 
@@ -113,19 +122,25 @@ class DoG(nn.Module):
 
 class FDoG(nn.Module):
 
-    def __init__(self, mu=10, iterations=3, sigma_c=3.0, sigma_m=10.0, rho=0.99, tau=0.7):
+    def __init__(self, mu=5, iterations=3, sigma_c=3.0, sigma_m=5.0, rho=0.997, tau=0.7, show_progress=False):
         super(FDoG, self).__init__()
-        self.etf = ETF(mu, iterations)
+        self.etf = ETF(mu, iterations, show_progress)
         self.dog = DoG(sigma_c, rho)
         self.sigma_m = sigma_m
         self.tau = tau
 
         self.max_S = math.floor(sigma_m * 3)
         self.delta = 1
+
+        self.show_progress = show_progress
     
     def forward(self, images):
         etf = self.etf(images)
         dog = self.dog(images, etf=etf)
+
+        if self.show_progress:
+            _show_arrows(etf[0,:,:,:])
+            _show_images(dog[0,:,:,:])
 
         b, c, x, y = images.shape
 
@@ -148,6 +163,8 @@ class FDoG(nn.Module):
                 fdog += f_s * gauss_weight
 
         fdog /= total_weight
+        if self.show_progress:
+            _show_images(fdog[0,:,:,:])
         fdog = ~((fdog < 0) * (1 + torch.tanh(fdog) < self.tau))
         return fdog.to(dtype=torch.long)
 
@@ -189,8 +206,5 @@ if __name__ == "__main__":
     fdog.to(device)
     out = fdog(images)
     _show_images(out[0,:,:,:])
-
-    torchvision.utils.save_image(images[0,:,:,:] / 2 + 0.5, 'test_in.png')
-    torchvision.utils.save_image(out[0,:,:,:], 'test_out.png')
 
 #---------------------------------------------------------------------
