@@ -23,6 +23,9 @@ class XDoG:
     def __call__(self, t: torch.Tensor) -> torch.Tensor:
         """perform XDoG given a tensor with batch size"""
 
+        device = t.device
+        t = t.cpu()
+
         # go through the batch and convert all images, stack them for the output
         r: List[torch.Tensor] = []
         for i in range(t.shape[0]):
@@ -32,7 +35,7 @@ class XDoG:
             o = torch.from_numpy(out).float()
             r.append(o)
 
-        return torch.stack([v for v in r])
+        return torch.stack([v for v in r]).to(device)
 
 
 def xdog_from_path(
@@ -107,10 +110,10 @@ if __name__ == "__main__":
     img2 = plt.imread("./test.png")
 
     b = np.stack((img1, img2))
-    batched = torch.from_numpy(b)
+    batched = torch.from_numpy(b).cuda()
     xform = XDoG(GAMMA, PHI, EPSILON, K, SIGMA)
 
     out = xform(batched)
     for i in range(out.shape[0]):
-        plt.imshow(out[i].T.numpy())  # type: ignore
+        plt.imshow(out[i].T.cpu().numpy())  # type: ignore
         plt.show()
