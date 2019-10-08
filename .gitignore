@@ -2,3 +2,4 @@ __pycache__
 Data/
 .env/
 test.png
+.mypy_cache/
