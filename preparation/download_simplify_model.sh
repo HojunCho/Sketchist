@@ -1,4 +1,3 @@
- 
 #!/bin/bash
 
 function download_model {
@@ -25,9 +24,6 @@ function download_model {
    echo "ok"
 }
 
-cd ../Data
-download_model "simplify_GAN.pth" "https://doc-14-20-docs.googleusercontent.com/docs/securesc/ha0ro937gcuc7l7deffksulhg5h7mbp1/ps8jab7hdllrgko4gaic71hmtne7dhkr/1570514400000/11424217391890521276/*/1XdrLcTfmt2pCBkuqzlQRMOQ0WW3LaKZ2?e=download" "838e61faf600d3e585c686544be6b15e"
-cd -
+download_model "Data/simplify_weight.pth" "https://doc-14-20-docs.googleusercontent.com/docs/securesc/ha0ro937gcuc7l7deffksulhg5h7mbp1/apu3eng8a546nf3mng6rc1na4m268ujj/1570788000000/11424217391890521276/*/1XdrLcTfmt2pCBkuqzlQRMOQ0WW3LaKZ2?e=download" "838e61faf600d3e585c686544be6b15e"
 echo "Downloads finished successfully!"
-mv simplify_GAN.pth simplify_weight.pth
 

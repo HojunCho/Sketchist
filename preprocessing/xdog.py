@@ -25,7 +25,7 @@ class XDoG:
         """perform XDoG given a tensor with batch size"""
 
         device = t.device
-        t = t.cpu()
+        t = t.permute(0, 3, 2, 1).cpu()
 
         # go through the batch and convert all images, stack them for the output
         r: List[torch.Tensor] = []
@@ -78,11 +78,7 @@ def xdog(
     mean_val = np.mean(xdog_img)
     xdog_img = np.where(xdog_img <= mean_val, 0.0, 1.0)
 
-    r = np.zeros((3, xdog_img.shape[0], xdog_img.shape[1]))
-    for i in range(3):
-        r[i, :, :] = xdog_img
-
-    return r
+    return np.expand_dims(xdog_img, axis=0)
 
 
 GAMMA = 0.95
@@ -92,13 +88,13 @@ K = 1.2
 SIGMA = 0.9
 
 if __name__ == "__main__":
-    xdog_from_path("./test.png", GAMMA, PHI, EPSILON, K, SIGMA)
+    # xdog_from_path("./test.png", GAMMA, PHI, EPSILON, K, SIGMA)
 
     img1 = plt.imread("./test.png")
     img2 = plt.imread("./test.png")
 
     b = np.stack((img1, img2))
-    batched = torch.from_numpy(b).cuda()
+    batched = torch.from_numpy(np.transpose(b,axes=[0, 3, 1, 2]))
     print(batched.shape)
 
     xform = XDoG(GAMMA, PHI, EPSILON, K, SIGMA)

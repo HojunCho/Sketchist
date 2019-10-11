@@ -1,6 +1,8 @@
 import torch.nn as nn
 import torch
 
+import subprocess
+
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 def SimplifyNet():
@@ -57,29 +59,26 @@ def SimplifyNet():
 def process_data(data):
 	immean = 0.9664114577640158
 	imstd = 0.0858381272736797
-	w, h = data.shape[0], data.shape[1]
+	w, h = data.shape[2], data.shape[3]
 	pw = 8 - (w % 8) if w % 8 != 0 else 0
 	ph = 8 - (h % 8) if h % 8 != 0 else 0
-	data = ((data - immean) / imstd).unsqueeze(0)
+	data = ((data - immean) / imstd)
 	if pw != 0 or ph != 0:
-		data = torch.nn.ReplicationPad2d((0, pw, 0, ph))(data).data
+		data = torch.nn.ReplicationPad2d((0, pw, 0, ph))(data)
 	return data
 
 class Simplify:
 	def __init__(self):
 		self.model = SimplifyNet()
-	def __call__(self, data): # B C H W
+		subprocess.run(['chmod', '700', 'preparation/download_simplify_model.sh'])
+		subprocess.run(['preparation/download_simplify_model.sh'])
+		self.model.load_state_dict(torch.load('Data/simplify_weight.pth'))
 		self.model.to(device)
 		self.model.eval()
-		for i in range(data.shape[0]):
-			resized = process_data(data[i])
-			resized = resized.to(device)
-			pred = self.model(resized)
-			if i==0:
-				result = pred
-			else:
-				result = torch.cat((result, pred), 0)
-		return result
+
+	def __call__(self, data): # B C H W
+		resized = process_data(data).to(device)
+		return self.model(resized).detach()
 
 #######################################
 # Just for testing

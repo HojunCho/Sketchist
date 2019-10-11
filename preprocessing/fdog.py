@@ -135,8 +135,11 @@ class FDoG(nn.Module):
 
         self.fill_black = fill_black
         self.show_progress = show_progress
+
+        self.eval()
     
     def forward(self, images):
+        images = torch.mean(images, dim=1, keepdim=True)
         if self.fill_black:
             images = (images - 0.5) * 2
         etf = self.etf(images)
@@ -182,7 +185,7 @@ class FDoG(nn.Module):
             if self.show_progress:
                 _show_images(fdog[0,:,:,:])
 
-        return fdog
+        return fdog.detach()
 
 
 #---------------------------------------------------------------------
