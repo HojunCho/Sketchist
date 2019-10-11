@@ -1,3 +1,7 @@
 __pycache__
-.vscode
 Data/
+.mypy_cache/
+.vscode/
+.env/
+out/
+test.png
