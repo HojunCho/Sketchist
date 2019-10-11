@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from typing import List
 
 import numpy as np  # type: ignore
@@ -29,7 +30,7 @@ class XDoG:
         # go through the batch and convert all images, stack them for the output
         r: List[torch.Tensor] = []
         for i in range(t.shape[0]):
-            pil_img = self.to_pil(t[i].T).convert("LA")  # type: ignore
+            pil_img = self.to_pil(t[i].T).convert("L")  # type: ignore
             out = xdog(pil_img, self.gamma, self.phi, self.epsilon, self.k, self.sigma)
 
             o = torch.from_numpy(out).float()
@@ -41,10 +42,10 @@ class XDoG:
 def xdog_from_path(
     img_path: str, gamma: float, phi: int, epsilon: float, k: float, sigma: float
 ) -> None:
-    raw_image = Image.open(img_path).convert("LA")
+    raw_image = Image.open(img_path).convert("L")
     arr = xdog(raw_image, gamma, phi, epsilon, k, sigma)
 
-    plt.imshow(arr, cmap="gray", vmin=0, vmax=1)
+    plt.imshow(arr.T, vmin=0, vmax=1)
     plt.show()
 
 
@@ -60,8 +61,8 @@ def xdog(
     # convert to numpy 128 x 128 x 2
     img_1 = np.array(g_filtered_img_1.getdata())
     dim = int(img_1.shape[0] ** (1 / 2))
-    img_1 = img_1.reshape(dim, dim, 2)
-    img_2 = np.array(g_filtered_img_2.getdata()).reshape(dim, dim, 2)
+    img_1 = img_1.reshape(dim, dim, 1)
+    img_2 = np.array(g_filtered_img_2.getdata()).reshape(dim, dim, 1)
 
     # the last layer is only 255, so get the pixel value normalized to 1
     img_1 = img_1[:, :, 0] / 255
@@ -71,49 +72,47 @@ def xdog(
     # plt.show()
 
     xdog_img = img_1 - (gamma * img_2)
-
-    # Extended difference of gaussians
-    for i in range(xdog_img.shape[0]):
-        for j in range(xdog_img.shape[1]):
-            if xdog_img[i, j] < epsilon:
-                xdog_img[i, j] = 1.0
-            else:
-                xdog_img[i, j] = 1.0 + np.tanh(phi * xdog_img[i, j])
-
-    # plt.imshow(xdog_img, cmap="gray", vmin=0, vmax=1)
-    # plt.show()
-
-    # take mean of XDoG Filtered image to use in thresholding operation
-    mean_val = np.mean(xdog_img)
+    xdog_img = np.where(xdog_img < epsilon, 1.0, 1.0 + np.tanh(phi * xdog_img))
 
     # thresholding
-    for i in range(xdog_img.shape[0]):
-        for j in range(xdog_img.shape[1]):
-            if xdog_img[i, j] <= mean_val:
-                xdog_img[i, j] = 0.0
-            else:
-                xdog_img[i, j] = 1.0
+    mean_val = np.mean(xdog_img)
+    xdog_img = np.where(xdog_img <= mean_val, 0.0, 1.0)
 
-    return xdog_img
+    r = np.zeros((3, xdog_img.shape[0], xdog_img.shape[1]))
+    for i in range(3):
+        r[i, :, :] = xdog_img
+
+    return r
 
 
-GAMMA = 0.97
+GAMMA = 0.95
 PHI = 200
-EPSILON = -0.1
-K = 1.6
-SIGMA = 0.8
+EPSILON = 0.015
+K = 1.2
+SIGMA = 0.9
 
 if __name__ == "__main__":
-    # xdog_from_path("./test.png", GAMMA, PHI, EPSILON, K, SIGMA)
+    xdog_from_path("./test.png", GAMMA, PHI, EPSILON, K, SIGMA)
 
     img1 = plt.imread("./test.png")
     img2 = plt.imread("./test.png")
 
     b = np.stack((img1, img2))
     batched = torch.from_numpy(b).cuda()
-    xform = XDoG(GAMMA, PHI, EPSILON, K, SIGMA)
+    print(batched.shape)
 
-    out = xform(batched)
+    xform = XDoG(GAMMA, PHI, EPSILON, K, SIGMA)
+    times = []
+    for i in range(10):
+        print(i)
+        before = datetime.now()
+        out = xform(batched)
+        after = datetime.now()
+        times.append(after - before)
+
+    print("avg time per image: ", sum(times, timedelta(0)) / len(times) / 2)
+
+    print(out.shape)
     for i in range(out.shape[0]):
         plt.imshow(out[i].T.cpu().numpy())  # type: ignore
         plt.show()

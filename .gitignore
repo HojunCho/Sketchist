@@ -3,3 +3,4 @@ Data/
 .env/
 test.png
 .mypy_cache/
+out/
