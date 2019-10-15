@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 
-from datasets import FFHQ
 
 class Sobel(nn.Module):
 
@@ -206,6 +205,7 @@ def _show_arrows(vector_map):
     plt.show()
 
 if __name__ == "__main__":
+    from datasets import FFHQ
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     transform = transforms.Compose(
