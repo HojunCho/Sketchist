@@ -3,5 +3,5 @@ Data/
 .mypy_cache/
 .vscode/
 .env
+.dummy
 out/
-test.png

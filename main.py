@@ -4,7 +4,7 @@ import os
 import torch
 import torch.nn as nn
 import torchvision.utils as vutils
-# from tensorboardX import SummaryWriter
+from tensorboardX import SummaryWriter
 from tqdm import tqdm, trange
 
 from model import Generator, Discriminator
@@ -90,8 +90,6 @@ def main(args):
             # Calculate the gradients for this batch
             errD_fake.backward()
             D_G_z1 = output.mean().item()
-            # Add the gradients from the all-real and all-fake batches
-            errD = errD_real + errD_fake
             # Update D
             optimizerD.step()
 

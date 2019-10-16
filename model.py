@@ -75,5 +75,3 @@ class Discriminator(nn.Module):
         output=self.linear(output).sigmoid()
 
         return output
-
-#### 마지막에 Softmax를 넣는다 되어 있는데 output dim이 1인데 어떻게 넣나요??? 논문 다시 읽고 수정할게요 (75번째줄)
