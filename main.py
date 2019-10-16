@@ -167,6 +167,12 @@ def main(args):
                 fake = netG(z)
                 x = vutils.make_grid(fake, normalize=True, scale_each=True)
                 writer.add_image('Image', x, eval_niter)
+        
+        if epoch % 10 == 0 or args.debug:
+            g_checkpoint_dir = os.path.join(args.save_dir, "g_{}_checkpoint.pt".format(epoch))
+            d_checkpoint_dir = os.path.join(args.save_dir, "d_{}_checkpoint.pt".format(epoch))
+            torch.save(g_checkpoint_dir, netG.state_dict())
+            torch.save(d_checkpoint_dir, netD.state_dict())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
