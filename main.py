@@ -28,12 +28,11 @@ def compute_loss(generated_image, sketch, d_model, _lambda=0.5):
 
 
 def main(args):
+    device = torch.cuda.current_device() if torch.cuda.is_available() else 'cpu'
     train_loader = SketchDataLoader(root='~/Data/Datasets/Flickr-Face-HQ', train=not args.debug, sketch_type='XDoG', size=64, size_from='thumbs',
-                                    batch_size=args.batch_size, shuffle=True, num_workers=2)
+                                    batch_size=args.batch_size, shuffle=True, num_workers=2, device=device)
     test_loader = SketchDataLoader(root='~/Data/Datasets/Flickr-Face-HQ', train=False, sketch_type='XDoG', size=64, size_from='thumbs',
-                                    batch_size=args.batch_size, shuffle=True, num_workers=2)
-
-    device = torch.cuda.current_device()
+                                    batch_size=args.batch_size, shuffle=True, num_workers=2, device=device)
 
     dataiter = iter(test_loader)
     fixed_sketch = next(dataiter)

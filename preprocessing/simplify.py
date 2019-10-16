@@ -3,8 +3,6 @@ import torch
 
 import subprocess
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
 def SimplifyNet():
 	model = nn.Sequential(
 		nn.Conv2d(1, 48, (5, 5), (2, 2), (2, 2)),
@@ -68,8 +66,9 @@ def process_data(data):
 	return data
 
 class Simplify:
-	def __init__(self):
+	def __init__(self, device):
 		self.model = SimplifyNet()
+		self.device = device
 		subprocess.run(['chmod', '700', 'preparation/download_simplify_model.sh'])
 		subprocess.run(['preparation/download_simplify_model.sh'])
 		self.model.load_state_dict(torch.load('Data/simplify_weight.pth'))
@@ -77,7 +76,7 @@ class Simplify:
 		self.model.eval()
 
 	def __call__(self, data): # B C H W
-		resized = process_data(data).to(device)
+		resized = process_data(data.to(self.device)).to(self.device)
 		return self.model(resized).detach()
 
 #######################################

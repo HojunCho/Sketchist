@@ -47,7 +47,8 @@ class FFHQ(ImageFolder):
         return super(FFHQ, self).__getitem__(index)[0]
 
 class SketchDataLoader(DataLoader):
-    def __init__(self, root='Data', sketch_type='XDoG', train=True, size=64, size_from='thumbs', **kwargs):
+    def __init__(self, root='Data', sketch_type='XDoG', train=True, size=64, size_from='thumbs', device='cpu', **kwargs):
+        self.device = device
         transform = transforms.Compose(
             [transforms.Resize(size=size),
              transforms.ToTensor()])
@@ -74,12 +75,12 @@ class SketchDataLoader(DataLoader):
                 }
             else:
                 raise ValueError('Invalid image size')
-            self.edge_detector = fdog.FDoG(**fdog_parameters)
+            self.edge_detector = lambda data: fdog.FDoG(**fdog_parameters).to(device=device)(data.to(device))
 
         else:
             raise ValueError('Bad sketch method name')
 
-        self.simplifier = simplify.Simplify()
+        self.simplifier = simplify.Simplify(device=device)
         kwargs['dataset'] = FFHQ(root=root, train=train, size=size_from, stats=False, transform=transform)
         super(SketchDataLoader, self).__init__(**kwargs)
     
@@ -88,9 +89,8 @@ class SketchDataLoader(DataLoader):
         def _iter_wrapper(iterator):
             for real_image in iterator:
                 edges = self.edge_detector(real_image)
-                sketch = self.simplifier(edges).repeat([1, 3, 1, 1])
-                sketch = sketch.cpu()
-                yield torch.cat([sketch, real_image], dim=3)
+                sketch = self.simplifier(edges.to(self.device)).repeat([1, 3, 1, 1])
+                yield torch.cat([sketch, real_image.to(self.device)], dim=3)
 
         return _iter_wrapper(iterator)
 
