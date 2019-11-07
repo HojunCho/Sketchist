@@ -109,29 +109,28 @@ def main(args):
             D_G_z1 = fake_output.mean().item()
 
             # calculate D's loss on the real and fake batch
-            errD = (
-                criterion(real_output, labels) + criterion(fake_output, fake_labels)
-            ) / 2
+            errD = -torch.mean(real_output) + torch.mean(fake_output)
             errD.backward()
             optimizerD.step()
 
-            ############################
-            # (2) Update G network: maximize log(D(G(z)))
-            ###########################
-            netG.zero_grad()
-            # Since we just updated D, perform another forward pass of all-fake batch through D
-            output = netD(fake).view(-1)
-            # Calculate G's loss based on this output
-            errG = criterion(output, labels)
-            # Calculate G's kl loss
-            errKL = kl_criterion(mask_image(fake), mask_image(real))
-            errG = args.train_lambda * errG + errKL
-            # Calculate gradients for G
-            errG.backward()
-            D_G_z2 = output.mean().item()
-            G_kl = errKL.item()
-            # Update G
-            optimizerG.step()
+            for p in netD.parameters():
+                p.data.clamp_(-0.01, 0.01)
+
+            if niter % 5 == 0:
+                ############################
+                # (2) Update G network: maximize log(D(G(z)))
+                ###########################
+                netG.zero_grad()
+                # Since we just updated D, perform another forward pass of all-fake batch through D
+                output = netD(fake).view(-1)
+                errKL = kl_criterion(mask_image(fake), mask_image(real))
+                errG = (args.train_lambda * -torch.mean(output)) + errKL
+                # Calculate gradients for G
+                errG.backward()
+                D_G_z2 = output.mean().item()
+                G_kl = errKL.item()
+                # Update G
+                optimizerG.step()
 
             niter += 1
             writer.add_scalars(
