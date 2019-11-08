@@ -67,6 +67,12 @@ class SketchDataLoader(DataLoader):
                     'sigma_c': 1.0,
                     'sigma_m': 2.0
                 }
+            if size == 128:
+                fdog_parameters = {
+                    'mu': 3,
+                    'sigma_c': 1.0,
+                    'sigma_m': 3.0
+                }
             elif size == 1024:
                 fdog_parameters = {
                     'mu': 15,
@@ -75,7 +81,7 @@ class SketchDataLoader(DataLoader):
                 }
             else:
                 raise ValueError('Invalid image size')
-            self.edge_detector = lambda data: fdog.FDoG(**fdog_parameters).to(device=device)(data.to(device))
+            self.edge_detector = fdog.FDoG(**fdog_parameters).to(device=device)
 
         else:
             raise ValueError('Bad sketch method name')
@@ -98,8 +104,8 @@ class SketchDataLoader(DataLoader):
 # Test code
 
 if __name__ == "__main__":
-    trainloader = SketchDataLoader(root='~/Data/Datasets/Flickr-Face-HQ', train=False, sketch_type='XDoG', size=64, size_from='thumbs',
-                                   batch_size=4, shuffle=True, num_workers=2)
+    trainloader = SketchDataLoader(root='~/Data/Datasets/Flickr-Face-HQ', train=False, sketch_type='FDoG', size=1024, size_from='images',
+                                   batch_size=1, shuffle=False, num_workers=2)
 
     dataiter = iter(trainloader)
     images = next(dataiter)
