@@ -1,5 +1,6 @@
 import argparse
 import os
+from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -13,8 +14,14 @@ from model import Discriminator, Generator
 
 def mask_image(image):
     mask = torch.ones_like(image)
-    mask[:, :, :, : int(mask.size(-1) / 2)] = 0
+    mask[:, :, :, int(mask.size(-1) / 2) :] = 0
     return image * mask
+
+
+def random_uniform(
+    r1: int, r2: int, batch: int, dim: int, device: torch.device
+) -> torch.Tensor:
+    return ((r1 - r2) * torch.rand(batch, dim) + r2).to(device)
 
 
 def compute_loss(generated_image, sketch, d_model, _lambda=0.5):
@@ -54,18 +61,30 @@ def main(args):
         device=device,
     )
 
-    dataiter = iter(test_loader)
-    fixed_sketch = next(dataiter)
-    fixed_sketch = mask_image(fixed_sketch).to(device)
-
     netG = Generator(args.z_dim).to(device)
     netD = Discriminator().to(device)
 
     optimizerG = torch.optim.RMSprop(netG.parameters(), lr=args.g_lr)
     optimizerD = torch.optim.RMSprop(netD.parameters(), lr=args.d_lr)
 
-    log_dir = os.path.join(args.save_dir, "tensorboard")
+    log_dir = os.path.join(
+        os.path.join(args.save_dir, f"{datetime.now().strftime('%Y-%m-%d-%H:%M')}"),
+        "tensorboard",
+    )
     writer = SummaryWriter(log_dir=log_dir)
+
+    dataiter = iter(test_loader)
+    fixed_sketch = next(dataiter)
+
+    # write an example image before masking
+    img = vutils.make_grid(fixed_sketch, normalize=True, scale_each=True)
+    writer.add_image("Image/example", img, 0)
+
+    fixed_sketch = mask_image(fixed_sketch).to(device)
+
+    # write an example image after masking the image
+    img = vutils.make_grid(fixed_sketch, normalize=True, scale_each=True)
+    writer.add_image("Image/fixed_sketch", img, 0)
 
     loss_log = tqdm(total=0, bar_format="{desc}", position=2)
 
@@ -85,7 +104,7 @@ def main(args):
             real_output = netD(real).view(-1)
 
             ## Train with all-fake batch, Generate batch of latent vectors, then fake batch
-            noise = torch.randn(b_size, args.z_dim, device=device)
+            noise = random_uniform(-1, 1, b_size, args.z_dim, device)
             fake = netG(noise)
             fake_output = netD(fake.detach()).view(-1)
 
@@ -104,7 +123,9 @@ def main(args):
                 # (2) Update G network: after updating D, perform another forward pass through D
                 netG.zero_grad()
                 output = netD(fake).view(-1)
+
                 errKL = kl_criterion(mask_image(fake), mask_image(real))
+
                 # the mean output is negative because G wants D to output a real value (positive), but we need to
                 # minimize this loss for G
                 errG = (args.train_lambda * -torch.mean(output)) + errKL
@@ -132,8 +153,10 @@ def main(args):
                 z_list = []
                 mse_criterion = nn.MSELoss(reduction="none")
 
+                # NOTE: this uses the same sketch throughout time so we can monitor the performance
+                # on the same data
                 for i in range(fixed_sketch.size(0)):
-                    z = torch.rand(args.eval_N, args.z_dim).to(device)
+                    z = random_uniform(-1, 1, args.eval_N, args.z_dim, device)
                     initial_sketch = netG(z)
                     initial_sketch_kl_loss = mse_criterion(
                         mask_image(initial_sketch),
@@ -151,8 +174,6 @@ def main(args):
                 optimizer = torch.optim.SGD(
                     z_as_params, lr=args.eval_lr, momentum=args.eval_momentum
                 )
-                label = torch.full((b_size,), real_label, device=device)
-                label.fill_(real_label)
 
                 for _ in range(args.eval_iterations):
                     netG.zero_grad()
@@ -212,7 +233,7 @@ if __name__ == "__main__":
         "--eval_momentum", default=0.9, type=float, help="eval iteration"
     )
 
-    parser.add_argument("--z_dim", type=int, default=100 * 100)
+    parser.add_argument("--z_dim", type=int, default=100)
 
     args = parser.parse_args()
 
