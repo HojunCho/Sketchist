@@ -24,18 +24,6 @@ def random_uniform(
     return ((r1 - r2) * torch.rand(batch, dim) + r2).to(device)
 
 
-def compute_loss(generated_image, sketch, d_model, _lambda=0.5):
-    # sketch -> [b, 3, h, 2*w]
-    # generated_image -> [b, 3, h, 2*w]
-
-    g_loss = _lambda * torch.log(1.0 - d_model(generated_image).sigmoid()).mean()
-
-    mse_criterion = nn.MSELoss()
-    kl_loss = mse_criterion(mask_image(generated_image), mask_image(sketch))
-
-    return g_loss, kl_loss
-
-
 def main(args):
     device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
     train_loader = SketchDataLoader(
@@ -62,7 +50,7 @@ def main(args):
     )
 
     netG = Generator(args.z_dim).to(device)
-    netD = Discriminator().to(device)
+    netD = Discriminator(args.sigma).to(device)
 
     optimizerG = torch.optim.RMSprop(netG.parameters(), lr=args.g_lr)
     optimizerD = torch.optim.RMSprop(netD.parameters(), lr=args.d_lr)
@@ -92,6 +80,7 @@ def main(args):
 
     niter = 0
     eval_niter = 0
+
     for epoch in trange(int(args.epochs), desc="Epoch", position=0):
         for real in tqdm(train_loader, desc="Train iter", leave=False, position=1):
             ## Train D with all-real batch
@@ -101,16 +90,16 @@ def main(args):
             b_size = real.size(0)
 
             # Forward pass real batch through D
-            real_output = netD(real).view(-1)
+            real_output = torch.mean(netD(real).view(-1))
 
             ## Train with all-fake batch, Generate batch of latent vectors, then fake batch
             noise = random_uniform(-1, 1, b_size, args.z_dim, device)
             fake = netG(noise)
-            fake_output = netD(fake.detach()).view(-1)
+            fake_output = torch.mean(netD(fake.detach()).view(-1))
 
             # calculate D's loss on the real and fake batch, D wants to minimize real (positive) values
             # and also minimize fake (negative) values
-            errD = -torch.mean(real_output) + torch.mean(fake_output)
+            errD = -real_output + fake_output
             writer.add_scalar("Loss/D", errD.item(), niter)
             errD.backward()
             optimizerD.step()
@@ -124,20 +113,17 @@ def main(args):
                 netG.zero_grad()
                 output = netD(fake).view(-1)
 
-                errKL = kl_criterion(mask_image(fake), mask_image(real))
-
                 # the mean output is negative because G wants D to output a real value (positive), but we need to
                 # minimize this loss for G
-                errG = (args.train_lambda * -torch.mean(output)) + errKL
+                errG = -torch.mean(output)
                 writer.add_scalar("Loss/G", errG.item(), niter)
-                writer.add_scalar("Loss/kl", errKL.item(), niter)
 
                 # Calculate gradients for G, and update
                 errG.backward()
                 optimizerG.step()
 
             niter += 1
-            str = f"errD: {errD.item():06.4f} errG: {errG.item():06.4f} errKl: {errKL.item():06.4f}"
+            str = f"errD: {errD.item():06.4f} errG: {errG.item():06.4f}"
             loss_log.set_description_str(str)
 
             if niter % 500 == 0 or args.debug:
@@ -147,9 +133,7 @@ def main(args):
             if niter % 5000 == 0 or args.debug:
 
                 eval_niter += 1
-                # initialize N uniform per batch
-                # sketch -> [b, 3, h, 2*w]
-
+                # initialize N uniform per batch sketch -> [b, 3, h, 2*w]
                 z_list = []
                 mse_criterion = nn.MSELoss(reduction="none")
 
@@ -234,6 +218,9 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("--z_dim", type=int, default=100)
+    parser.add_argument(
+        "--sigma", type=float, default=0.01, help="gaussian noise added to D training"
+    )
 
     args = parser.parse_args()
 

@@ -48,8 +48,9 @@ class Generator(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self):
+    def __init__(self, sigma: float):
         super(Discriminator, self).__init__()
+        self.sigma = sigma
         self.layer1 = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=5, stride=2, padding=2),
             nn.BatchNorm2d(64),
@@ -73,8 +74,13 @@ class Discriminator(nn.Module):
 
         self.linear = nn.Linear(4 * 8 * 512, 1)
 
-    def forward(self, inputs):
-        output = self.layer1(inputs)
+    def add_noise(self, inputs: torch.Tensor) -> torch.Tensor:
+        noise = inputs.data.new(inputs.size()).normal_(0, self.sigma)
+        return inputs + noise
+
+    def forward(self, inputs: torch.Tensor):  # type: ignore
+        output = self.add_noise(inputs)
+        output = self.layer1(output)
         output = self.layer2(output)
         output = self.layer3(output)
         output = self.layer4(output)
