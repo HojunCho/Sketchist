@@ -5,7 +5,7 @@ import torch.nn as nn
 # Input dim :(Batch, 100*100 ~ U[-1,1])
 # Output dim: (Batch, channel:3, Height=64, Width=128)
 class Generator(nn.Module):
-    def __init__(self, z_dim):
+    def __init__(self, z_dim: int) -> None:
         super(Generator, self).__init__()
         self.linear = nn.Linear(z_dim, 8192 * 2)
         self.layer1 = nn.Sequential(
@@ -36,7 +36,7 @@ class Generator(nn.Module):
             nn.Tanh(),
         )
 
-    def forward(self, inputs):
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:  # type: ignore
         output = self.linear(inputs)
         output = output.view(-1, 512, 4, 8)
         output = self.layer1(output)
@@ -48,9 +48,8 @@ class Generator(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, sigma: float):
+    def __init__(self) -> None:
         super(Discriminator, self).__init__()
-        self.sigma = sigma
         self.layer1 = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=5, stride=2, padding=2),
             nn.BatchNorm2d(64),
@@ -74,13 +73,14 @@ class Discriminator(nn.Module):
 
         self.linear = nn.Linear(4 * 8 * 512, 1)
 
-    def add_noise(self, inputs: torch.Tensor) -> torch.Tensor:
-        noise = inputs.data.new(inputs.size()).normal_(0, self.sigma)
-        return inputs + noise
+    def add_noise(self, inputs: torch.Tensor, sigma: float) -> torch.Tensor:
+        """add random noise witha  uniform random sigma multiplier"""
+        noise = torch.zeros_like(inputs).normal_(0, torch.rand(1).item() * sigma)
+        out = inputs + noise
+        return torch.where(out < 0, torch.tensor([0.0]), out)
 
-    def forward(self, inputs: torch.Tensor):  # type: ignore
-        output = self.add_noise(inputs)
-        output = self.layer1(output)
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:  # type: ignore
+        output = self.layer1(inputs)
         output = self.layer2(output)
         output = self.layer3(output)
         output = self.layer4(output)

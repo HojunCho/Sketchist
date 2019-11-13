@@ -4,15 +4,16 @@ from datetime import datetime
 
 import torch
 import torch.nn as nn
-import torchvision.utils as vutils
-from tensorboardX import SummaryWriter
-from tqdm import tqdm, trange
+import torchvision.utils as vutils  # type: ignore
+from tensorboardX import SummaryWriter  # type: ignore
+from torch.optim import RMSprop  # type: ignore
+from tqdm import tqdm, trange  # type: ignore
 
 from datasets import SketchDataLoader
 from model import Discriminator, Generator
 
 
-def mask_image(image):
+def mask_image(image: torch.Tensor) -> torch.Tensor:
     mask = torch.ones_like(image)
     mask[:, :, :, int(mask.size(-1) / 2) :] = 0
     return image * mask
@@ -24,8 +25,8 @@ def random_uniform(
     return ((r1 - r2) * torch.rand(batch, dim) + r2).to(device)
 
 
-def main(args):
-    device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
+def main(args: argparse.Namespace) -> None:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_loader = SketchDataLoader(
         root="~/Data/Datasets/Flickr-Face-HQ",
         train=not args.debug,
@@ -50,10 +51,12 @@ def main(args):
     )
 
     netG = Generator(args.z_dim).to(device)
-    netD = Discriminator(args.sigma).to(device)
+    netG.load_state_dict(torch.load("./.dummy/g_190_third.pt"))
+    netD = Discriminator().to(device)
+    netD.load_state_dict(torch.load("./.dummy/d_190_third.pt"))
 
-    optimizerG = torch.optim.RMSprop(netG.parameters(), lr=args.g_lr)
-    optimizerD = torch.optim.RMSprop(netD.parameters(), lr=args.d_lr)
+    optimizerG = RMSprop(netG.parameters(), lr=args.g_lr)
+    optimizerD = RMSprop(netD.parameters(), lr=args.d_lr)
 
     log_dir = os.path.join(
         os.path.join(args.save_dir, f"{datetime.now().strftime('%Y-%m-%d-%H:%M')}"),
