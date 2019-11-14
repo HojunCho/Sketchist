@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import cv2
-
 import torchvision.transforms as T
 
 def decode_segmap(image, source, nc=21):
@@ -28,8 +27,10 @@ def decode_segmap(image, source, nc=21):
   rgb = np.stack([r, g, b], axis=2)
 
   # Load the foreground input image
-  foreground = cv2.imread(source)
+  # foreground = cv2.imread(source)
+  foreground = source
   # and resize image to match shape of R-band in RGB output map
+  #foreground = cv2.cvtColor(foreground, cv2.COLOR_BGR2RGB)
   foreground = cv2.resize(foreground, (r.shape[1], r.shape[0]))
   # Create a background array to hold white pixels
   # with the same size as RGB output map
@@ -52,25 +53,43 @@ def decode_segmap(image, source, nc=21):
   # Return a normalized output image for display
   return outImage / 255
 
-def segment(net, path, show_orig=True, dev='cuda'):
-  img = Image.open(path)
-  if show_orig: plt.imshow(img); plt.axis('off'); plt.show()
-  # Comment the Resize and CenterCrop for better inference results
-  trf = T.Compose([T.Resize(450),
-           # T.CenterCrop(224),
-           T.ToTensor(),
-           T.Normalize(mean=[0.485, 0.456, 0.406],
-                 std=[0.229, 0.224, 0.225])])
-  inp = trf(img).unsqueeze(0).to(dev)
-  out = net.to(dev)(inp)['out']
-  om = torch.argmax(out.squeeze(), dim=0).detach().cpu().numpy()
+def segment(net, data, show_orig=True, dev='cuda'):
+  #if show_orig: plt.imshow(img); plt.axis('off'); plt.show()
+  trf = T.Compose([T.ToTensor(),
+                   T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+  rgbs = []
+  for i in range(data.shape[0]):
+    inp = trf(data[i]).unsqueeze(0).to(dev)
+    out = net.to(dev)(inp)['out']
+    om = torch.argmax(out.squeeze(), dim=0).detach().cpu().numpy()
 
-  rgb = decode_segmap(om, path)
-  rgb = rgb*255
-  cv2.imwrite(('res101.png'), rgb)
+    rgb = decode_segmap(om, data[i])
+    rgb = rgb*255
+    rgbs.append(rgb)
+
+  rgbs = np.stack(rgbs, axis=0)
+  return rgbs
+
+
+class Removal:
+  def __init__(self, device):
+    self.device = device
+    self.model = models.segmentation.deeplabv3_resnet101(pretrained=1).eval()
+
+  def __call__(self, data): # Input path
+    return segment(self.model, data, show_orig=False)
+
 
 if __name__ == "__main__":
-  dlab = models.segmentation.deeplabv3_resnet101(pretrained=1).eval()
-  name = './00003.png'
-  segment(dlab, name, show_orig=False)
+  a = cv2.imread('./00000.png')
+  b = cv2.imread('./00003.png')
+  test_input = np.stack([a, b], axis=0) # B X W X H X C
+
+  removal = Removal('cuda')
+  output = removal(test_input) # B X W X H X C
+
+  a_o = output[0]
+  cv2.imwrite(('a_o.png'), a_o)
+  b_o = output[1]
+  cv2.imwrite(('b_o.png'), b_o)
 
