@@ -51,9 +51,9 @@ def main(args: argparse.Namespace) -> None:
     )
 
     netG = Generator(args.z_dim).to(device)
-    netG.load_state_dict(torch.load("./.dummy/g_190_third.pt"))
-    netD = Discriminator().to(device)
-    netD.load_state_dict(torch.load("./.dummy/d_190_third.pt"))
+    # netG.load_state_dict(torch.load("./.dummy/keep/g_190_sixth.pt"))
+    netD = Discriminator(args.sigma).to(device)
+    # netD.load_state_dict(torch.load("./.dummy/keep/d_190_sixth.pt"))
 
     optimizerG = RMSprop(netG.parameters(), lr=args.g_lr)
     optimizerD = RMSprop(netD.parameters(), lr=args.d_lr)
@@ -161,7 +161,6 @@ def main(args: argparse.Namespace) -> None:
                 optimizer = torch.optim.SGD(
                     z_as_params, lr=args.eval_lr, momentum=args.eval_momentum
                 )
-
                 for _ in range(args.eval_iterations):
                     netG.zero_grad()
                     netD.zero_grad()
