@@ -1,11 +1,15 @@
 import argparse
 import os
 from datetime import datetime
+from typing import Tuple
 
+import numpy as np  # type: ignore
 import torch
 import torch.nn as nn
 import torchvision.utils as vutils  # type: ignore
 from tensorboardX import SummaryWriter  # type: ignore
+# import torch.autograd as autograd
+from torch.autograd import Variable, grad
 from torch.optim import RMSprop  # type: ignore
 from tqdm import tqdm, trange  # type: ignore
 
@@ -23,6 +27,41 @@ def random_uniform(
     r1: int, r2: int, batch: int, dim: int, device: torch.device
 ) -> torch.Tensor:
     return ((r1 - r2) * torch.rand(batch, dim) + r2).to(device)
+
+
+def get_gradient_penalty(
+    D: nn.Module, real: torch.Tensor, fake: torch.Tensor, device: torch.device
+) -> Tuple[torch.Tensor, ...]:
+    batch_size = real.size()[0]
+
+    # Calculate interpolation
+    alpha = torch.rand(batch_size, 1, 1, 1)
+    alpha = alpha.expand_as(real).to(device)
+    interpolated = alpha * real.data + (1 - alpha) * fake.data  # type: ignore
+    interpolated = Variable(interpolated, requires_grad=True).to(device)
+
+    # Calculate probability of interpolated examples
+    prob_interpolated = D(interpolated)
+
+    # Calculate gradients of probabilities with respect to examples
+    gradients = grad(
+        outputs=prob_interpolated,
+        inputs=interpolated,
+        grad_outputs=torch.ones(prob_interpolated.size()).to(device),
+        create_graph=True,
+        retain_graph=True,
+    )[0]
+
+    # Gradients have shape (batch_size, num_channels, img_width, img_height),
+    # so flatten to easily take norm per example in batch
+    gradients = gradients.view(batch_size, -1)
+
+    # Derivatives of the gradient close to 0 can cause problems because of
+    # the square root, so manually calculate norm and add epsilon
+    gradients_norm = torch.sqrt(torch.sum(gradients ** 2, dim=1) + 1e-12)
+
+    # Return gradient penalty, and norm. print norm to make sure it stays small
+    return ((gradients_norm - 1) ** 2).mean(), gradients.norm(2, dim=1).mean().data
 
 
 def main(args: argparse.Namespace) -> None:
@@ -51,12 +90,16 @@ def main(args: argparse.Namespace) -> None:
     )
 
     netG = Generator(args.z_dim).to(device)
-    # netG.load_state_dict(torch.load("./.dummy/keep/g_190_sixth.pt"))
-    netD = Discriminator(args.sigma).to(device)
-    # netD.load_state_dict(torch.load("./.dummy/keep/d_190_sixth.pt"))
+    # netG.load_state_dict(torch.load("./.dummy/keep/g_10_ninth.pt"))
+    netD = Discriminator().to(device)
+    # netD.load_state_dict(torch.load("./.dummy/keep/d_10_ninth.pt"))
 
-    optimizerG = RMSprop(netG.parameters(), lr=args.g_lr)
-    optimizerD = RMSprop(netD.parameters(), lr=args.d_lr)
+    optimizerG = torch.optim.Adam(
+        netG.parameters(), lr=args.g_lr, betas=(args.beta1, args.beta2)
+    )
+    optimizerD = torch.optim.Adam(
+        netD.parameters(), lr=args.d_lr, betas=(args.beta1, args.beta2)
+    )
 
     log_dir = os.path.join(
         os.path.join(args.save_dir, f"{datetime.now().strftime('%Y-%m-%d-%H:%M')}"),
@@ -100,16 +143,15 @@ def main(args: argparse.Namespace) -> None:
             fake = netG(noise)
             fake_output = torch.mean(netD(fake.detach()).view(-1))
 
+            gradient_penalty, norm = get_gradient_penalty(
+                netD, real.data, fake.data, device
+            )
             # calculate D's loss on the real and fake batch, D wants to minimize real (positive) values
             # and also minimize fake (negative) values
-            errD = -real_output + fake_output
+            errD = -real_output + fake_output + args.lambda_gp * gradient_penalty
             writer.add_scalar("Loss/D", errD.item(), niter)
             errD.backward()
             optimizerD.step()
-
-            # clip weights according to WGAN
-            for p in netD.parameters():
-                p.data.clamp_(-args.clip_value, args.clip_value)
 
             if niter % args.g_iter == 0:
                 # (2) Update G network: after updating D, perform another forward pass through D
@@ -126,7 +168,7 @@ def main(args: argparse.Namespace) -> None:
                 optimizerG.step()
 
             niter += 1
-            str = f"errD: {errD.item():06.4f} errG: {errG.item():06.4f}"
+            str = f"errD: {errD.item():06.4f} errG: {errG.item():06.4f}, gradient norm: {norm.item():.2f}"
             loss_log.set_description_str(str)
 
             if niter % 500 == 0 or args.debug:
@@ -207,6 +249,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--g_iter", default=5, type=int, help="number of D iterations per G iteration"
     )
+    parser.add_argument(
+        "--beta1", type=float, default=0.5, help="beta 1 for Adam optimizer"
+    )
+    parser.add_argument(
+        "--beta2", type=float, default=0.999, help="beta 2 for Adam optimizer"
+    )
 
     # evaluation
     parser.add_argument("--eval_N", default=10, type=int, help="N")
@@ -221,7 +269,10 @@ if __name__ == "__main__":
 
     parser.add_argument("--z_dim", type=int, default=100)
     parser.add_argument(
-        "--sigma", type=float, default=0.01, help="gaussian noise added to D training"
+        "--lambda_gp",
+        type=int,
+        default=10,
+        help="lambda coefficient for gradient penalty",
     )
 
     args = parser.parse_args()
@@ -232,6 +283,6 @@ if __name__ == "__main__":
     args.save_dir = os.path.abspath(save_dir)
 
     torch.manual_seed(args.seed)
-    torch.cuda.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)  # type: ignore
 
     main(args)

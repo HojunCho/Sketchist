@@ -48,40 +48,33 @@ class Generator(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, sigma: float) -> None:
+    def __init__(self) -> None:
         super(Discriminator, self).__init__()
-        self.sigma = sigma
         self.layer1 = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=5, stride=2, padding=2),
-            nn.BatchNorm2d(64),
+            nn.LayerNorm([64, 32, 64]),
             nn.LeakyReLU(),
         )
         self.layer2 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=5, stride=2, padding=2),
-            nn.BatchNorm2d(128),
+            nn.LayerNorm([128, 16, 32]),
             nn.LeakyReLU(),
         )
         self.layer3 = nn.Sequential(
             nn.Conv2d(128, 256, kernel_size=5, stride=2, padding=2),
-            nn.BatchNorm2d(256),
+            nn.LayerNorm([256, 8, 16]),
             nn.LeakyReLU(),
         )
         self.layer4 = nn.Sequential(
             nn.Conv2d(256, 512, kernel_size=5, stride=2, padding=2),
-            nn.BatchNorm2d(512),
+            nn.LayerNorm([512, 4, 8]),
             nn.LeakyReLU(),
         )
 
         self.linear = nn.Linear(4 * 8 * 512, 1)
 
-    def add_noise(self, inputs: torch.Tensor) -> torch.Tensor:
-        """add random noise witha  uniform random sigma multiplier"""
-        noise = torch.zeros_like(inputs).normal_(0, torch.rand(1).item() * self.sigma)
-        return torch.relu(inputs + noise)
-
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:  # type: ignore
-        output = self.add_noise(inputs)
-        output = self.layer1(output)
+        output = self.layer1(inputs)
         output = self.layer2(output)
         output = self.layer3(output)
         output = self.layer4(output)
