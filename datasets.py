@@ -98,27 +98,9 @@ class SketchDataLoader(DataLoader):
 
         def _iter_wrapper(iterator):
             for real_image in iterator:
-                print("real_image: ", real_image.shape)
                 foreground = self.removal((real_image * 255).to(torch.uint8)).float() / 255.
-                print("fg: ", foreground.shape)
-                img = torchvision.utils.make_grid(foreground)
-                npimg = img.numpy()
-                test = np.transpose(npimg, (1, 2, 0))
-                plt.imshow(test)
-                plt.show()
-
-                # edges = self.edge_detector(foreground)
-                edges = self.edge_detector(real_image)
-                print("edges: ", edges.shape)
-                img = torchvision.utils.make_grid(edges)
-                npimg = img.numpy()
-                test = np.transpose(npimg, (1, 2, 0))
-                plt.imshow(test)
-                plt.show()
-
+                edges = self.edge_detector(foreground)
                 sketch = self.simplifier(edges.to(self.device)).repeat([1, 3, 1, 1])
-                print("sketch: ", sketch.shape)
-
                 yield torch.cat([sketch, real_image.to(self.device)], dim=3)
 
         return _iter_wrapper(iterator)
