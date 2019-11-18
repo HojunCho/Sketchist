@@ -68,6 +68,10 @@ def segment(net, data, show_orig=True, dev='cuda'):
     rgbs.append(rgb)
 
   rgbs = np.stack(rgbs, axis=0)
+  if rgbs.shape[3] == 3:
+    rgbs = np.transpose(rgbs, (0, 3, 1, 2))
+  assert (rgbs.shape[1] == 3)
+  rgbs = rgbs.astype('uint8')
   return rgbs
 
 
@@ -76,20 +80,41 @@ class Removal:
     self.device = device
     self.model = models.segmentation.deeplabv3_resnet101(pretrained=1).eval()
 
-  def __call__(self, data): # Input path
-    return segment(self.model, data, show_orig=False)
+  def __call__(self, data):
+    # input data is B X C X H X W Tensor
+    # Segment() needs B X H X W X C numpy array
+    data = data.numpy()
+    if data.shape[1] == 3:
+      data = np.transpose(data, (0,2,3,1))
+    assert(data.shape[3] == 3)
 
+    output = segment(self.model, data, show_orig=False)
+    output = torch.from_numpy(output)
+
+    return output
 
 if __name__ == "__main__":
+  # For debugging purpose
+
+  # Make a B X C X H X W Input Tensor
   a = cv2.imread('./00000.png')
   b = cv2.imread('./00003.png')
-  test_input = np.stack([a, b], axis=0) # B X W X H X C
+  real_image = np.stack([a, b], axis=0) # B X W X H X C
+  print(real_image.shape)
+  rgbs = np.transpose(real_image, (0, 3, 1, 2)) # B X C X H X W
+  real_image = torch.from_numpy(rgbs)
+  print(real_image.shape)
 
+  # Get a B X C X H X W bg removed Tensor
   removal = Removal('cuda')
-  output = removal(test_input) # B X W X H X C
+  output = removal(real_image)
 
-  a_o = output[0]
-  cv2.imwrite(('a_o.png'), a_o)
-  b_o = output[1]
-  cv2.imwrite(('b_o.png'), b_o)
+  # Make output be numpy of B X H X W X C to print out
+  output = output.numpy()
+  if output.shape[1] == 3:
+    output = np.transpose(output, (0, 2, 3, 1))
+  assert (output.shape[3] == 3)
+
+  cv2.imwrite(('00000_o.png'), output[0])
+  cv2.imwrite(('00003_o.png'), output[1])
 
