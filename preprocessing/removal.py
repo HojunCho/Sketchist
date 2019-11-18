@@ -88,7 +88,7 @@ class Removal:
       data = np.transpose(data, (0,2,3,1))
     assert(data.shape[3] == 3)
 
-    output = segment(self.model, data, show_orig=False)
+    output = segment(self.model, data, show_orig=False, dev=self.device)
     output = torch.from_numpy(output)
 
     return output
