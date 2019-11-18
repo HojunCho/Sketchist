@@ -7,6 +7,7 @@ import numpy as np  # type: ignore
 import torch
 import torch.nn as nn
 import torchvision.utils as vutils  # type: ignore
+from matplotlib import pyplot as plt  # type: ignore
 from tensorboardX import SummaryWriter  # type: ignore
 # import torch.autograd as autograd
 from torch.autograd import Variable, grad
@@ -15,18 +16,7 @@ from tqdm import tqdm, trange  # type: ignore
 
 from datasets import SketchDataLoader
 from model import Discriminator, Generator
-
-
-def mask_image(image: torch.Tensor) -> torch.Tensor:
-    mask = torch.ones_like(image)
-    mask[:, :, :, int(mask.size(-1) / 2) :] = 0
-    return image * mask
-
-
-def random_uniform(
-    r1: int, r2: int, batch: int, dim: int, device: torch.device
-) -> torch.Tensor:
-    return ((r1 - r2) * torch.rand(batch, dim) + r2).to(device)
+from utils import mask_image, random_uniform
 
 
 def get_gradient_penalty(
