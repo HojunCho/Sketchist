@@ -10,3 +10,6 @@ install:
 
 activate:
 	@source .env/bin/activate
+
+clean:
+	@rm -r ./.dummy/*
