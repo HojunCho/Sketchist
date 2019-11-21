@@ -1,100 +1,75 @@
-import argparse
 import math
 
-import torch
-from torchvision import utils
+import torch, torchvision
 
 from model import StyledGenerator
 
+class RealImageGenerator(object):
+    def __init__(self, path='Data/stylegan-256px-new.model', size=256, n_batch=4, device='cuda'):
+        self.device = device
+        self.n_batch = n_batch
+        self.size = size
 
-@torch.no_grad()
-def get_mean_style(generator, device):
-    mean_style = None
+        self.generator = StyledGenerator(512).to(device)
+        self.generator.load_state_dict(torch.load(path, map_location=device)['g_running'])
+        self.generator.eval()
 
-    for i in range(10):
-        style = generator.mean_style(torch.randn(1024, 512).to(device))
+        self.mean_style = self.get_mean_style()
 
-        if mean_style is None:
-            mean_style = style
+    @property
+    def step(self):
+        return int(math.log(self.size, 2)) - 2
 
-        else:
-            mean_style += style
+    @torch.no_grad()
+    def get_mean_style(self):
+        mean_style = None
 
-    mean_style /= 10
-    return mean_style
+        for i in range(10):
+            style = self.generator.mean_style(torch.randn(1024, 512).to(self.device))
 
-@torch.no_grad()
-def sample(generator, step, mean_style, n_sample, device):
-    image = generator(
-        torch.randn(n_sample, 512).to(device),
-        step=step,
-        alpha=1,
-        mean_style=mean_style,
-        style_weight=0.7,
-    )
-    
-    return image
+            if mean_style is None:
+                mean_style = style
 
-@torch.no_grad()
-def style_mixing(generator, step, mean_style, n_source, n_target, device):
-    source_code = torch.randn(n_source, 512).to(device)
-    target_code = torch.randn(n_target, 512).to(device)
-    
-    shape = 4 * 2 ** step
-    alpha = 1
+            else:
+                mean_style += style
 
-    images = [torch.ones(1, 3, shape, shape).to(device) * -1]
+        mean_style /= 10
+        return mean_style
 
-    source_image = generator(
-        source_code, step=step, alpha=alpha, mean_style=mean_style, style_weight=0.7
-    )
-    target_image = generator(
-        target_code, step=step, alpha=alpha, mean_style=mean_style, style_weight=0.7
-    )
+    @torch.no_grad()
+    def sample(self, n_sample=None, with_last_states=True):
+        if n_sample is None:
+            n_sample = self.n_batch
 
-    images.append(source_image)
-
-    for i in range(n_target):
-        image = generator(
-            [target_code[i].unsqueeze(0).repeat(n_source, 1), source_code],
-            step=step,
-            alpha=alpha,
-            mean_style=mean_style,
+        image, state = self.generator(
+            torch.randn(n_sample, 512).to(self.device),
+            step=self.step,
+            alpha=1,
+            mean_style=self.mean_style,
             style_weight=0.7,
-            mixing_range=(0, 1),
         )
-        images.append(target_image[i].unsqueeze(0))
-        images.append(image)
 
-    images = torch.cat(images, 0)
-    
-    return images
+        image.clamp_(min=-1, max=1)
+        image.add_(1).div_(2 + 1e-5)
+        
+        if with_last_states:
+            return image, state
+        else:
+            return image
 
-
+# Test Code
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--size', type=int, default=1024, help='size of the image')
-    parser.add_argument('--n_row', type=int, default=3, help='number of rows of sample matrix')
-    parser.add_argument('--n_col', type=int, default=5, help='number of columns of sample matrix')
-    parser.add_argument('path', type=str, help='path to checkpoint file')
-    
-    args = parser.parse_args()
-    
-    device = 'cuda'
+    generator = RealImageGenerator(path='Data/stylegan-256px-new.model', size=256, n_batch=4, device='cpu')
 
-    generator = StyledGenerator(512).to(device)
-    generator.load_state_dict(torch.load(args.path)['g_running'])
-    generator.eval()
-
-    mean_style = get_mean_style(generator, device)
-
-    step = int(math.log(args.size, 2)) - 2
+    img, states = generator.sample()
+    print('Shape of Last Hidden States: '+ str(states.shape))
     
-    img = sample(generator, step, mean_style, args.n_row * args.n_col, device)
-    utils.save_image(img, 'sample.png', nrow=args.n_col, normalize=True, range=(-1, 1))
-    
-    for j in range(20):
-        img = style_mixing(generator, step, mean_style, args.n_col, args.n_row, device)
-        utils.save_image(
-            img, f'sample_mixing_{j}.png', nrow=args.n_col + 1, normalize=True, range=(-1, 1)
-        )
+    # show images
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    img = torchvision.utils.make_grid(img)
+    npimg = img.numpy()
+    plt.imshow(np.transpose(npimg, (1, 2, 0)))
+    plt.show()
+   

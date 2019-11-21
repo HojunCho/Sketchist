@@ -436,6 +436,7 @@ class Generator(nn.Module):
             out = conv(out, style_step, noise[i])
 
             if i == step:
+                hidden_state = out
                 out = to_rgb(out)
 
                 if i > 0 and 0 <= alpha < 1:
@@ -445,7 +446,7 @@ class Generator(nn.Module):
 
                 break
 
-        return out
+        return out, hidden_state
 
 
 class StyledGenerator(nn.Module):

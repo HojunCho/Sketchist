@@ -186,6 +186,7 @@ class FDoG(nn.Module):
     def show_progress(self):
         return self.__show_progress
 
+    @torch.no_grad()
     def forward(self, images):
         images = torch.mean(images, dim=1, keepdim=True)
         etf = self.etf(images)
