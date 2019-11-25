@@ -5,9 +5,8 @@ import torch, torchvision
 from model import StyledGenerator
 
 class RealImageGenerator(object):
-    def __init__(self, path='Data/stylegan-256px-new.model', size=256, n_batch=4, device='cuda'):
+    def __init__(self, path='Data/stylegan-256px-new.model', size=256, device='cuda'):
         self.device = device
-        self.n_batch = n_batch
         self.size = size
 
         self.generator = StyledGenerator(512).to(device)
@@ -36,21 +35,26 @@ class RealImageGenerator(object):
         mean_style /= 10
         return mean_style
 
+    ## codes.shape = (n_batch, 512)
     @torch.no_grad()
-    def sample(self, n_sample=None, with_last_states=True):
-        if n_sample is None:
-            n_sample = self.n_batch
-
+    def generate(self, codes):
         image, state = self.generator(
-            torch.randn(n_sample, 512).to(self.device),
+            codes,
             step=self.step,
             alpha=1,
             mean_style=self.mean_style,
-            style_weight=0.7,
+            style_weight=0.7
         )
 
         image.clamp_(min=-1, max=1)
         image.add_(1).div_(2 + 1e-5)
+
+        return image, state
+
+    @torch.no_grad()
+    def sample(self, n_sample, with_last_states=True):
+        codes = torch.randn(n_sample, 512).to(self.device)
+        image, state = self.generate(codes)
         
         if with_last_states:
             return image, state
@@ -59,9 +63,9 @@ class RealImageGenerator(object):
 
 # Test Code
 if __name__ == '__main__':
-    generator = RealImageGenerator(path='Data/stylegan-256px-new.model', size=256, n_batch=4, device='cpu')
+    generator = RealImageGenerator(path='Data/stylegan-256px-new.model', size=256, device='cpu')
 
-    img, states = generator.sample()
+    img, states = generator.sample(4)
     print('Shape of Last Hidden States: '+ str(states.shape))
     
     # show images
