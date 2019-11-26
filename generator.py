@@ -4,19 +4,20 @@ from torch import nn
 from model import Discriminator, Generator
 from utils import mask_image, random_uniform
 
-z_dim = 10000
+z_dim = 1000
 eval_N = 10
 lr = 0.1
 momentum = 0.9
 eval_iterations = 50
 eval_lambda = 0.01
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 netG = Generator(z_dim).to(device)
-netG.load_state_dict(torch.load("./.dummy/g_270_checkpoint.pt"))
+netG.load_state_dict(torch.load("./.dummy/g_200_checkpoint.pt"))
 netD = Discriminator().to(device)
-netD.load_state_dict(torch.load("./.dummy/d_270_checkpoint.pt"))
+netD.load_state_dict(torch.load("./.dummy/d_200_checkpoint.pt"))
 
 kl_criterion = nn.MSELoss()
 
