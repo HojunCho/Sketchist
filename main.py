@@ -58,22 +58,22 @@ def get_gradient_penalty(
 def main(args: argparse.Namespace) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_loader = SketchDataLoader(
-        root="~/Data/Datasets/Flickr-Face-HQ",
+        root=args.data_root,
         train=not args.debug,
         sketch_type="XDoG",
         size=256,
-        size_from="thumbs",
+        size_from="images",
         batch_size=args.train_batch_size,
         shuffle=True,
         num_workers=2,
         device=device,
     )
     test_loader = SketchDataLoader(
-        root="~/Data/Datasets/Flickr-Face-HQ",
+        root=args.data_root,
         train=False,
         sketch_type="XDoG",
         size=256,
-        size_from="thumbs",
+        size_from="images",
         batch_size=args.eval_batch_size,
         shuffle=True,
         num_workers=2,
@@ -139,6 +139,7 @@ def main(args: argparse.Namespace) -> None:
             fake_sketch = netG(hidden)
             fake = torch.cat([fake_sketch, fake], dim=-1)
             fake_output = torch.mean(netD(fake.detach()).view(-1))
+
 
             gradient_penalty, norm = get_gradient_penalty(
                 netD, real.data, fake.data, device
@@ -221,7 +222,7 @@ def main(args: argparse.Namespace) -> None:
                 fake, hidden = realImageG.generate(z)
                 fake_sketch = netG(hidden)
                 fake = torch.cat([fake_sketch, fake], dim=-1)
-                x = vutils.make_grid(fake, normalize=True, scale_each=True)
+                x = vutils.make_grid(fake * .5 + .5)
                 writer.add_image("Image/eval", x, eval_niter)
 
         if epoch % 10 == 0 or args.debug:
@@ -241,7 +242,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--debug", dest="debug", action="store_true")
     parser.add_argument("--save_dir", default=".dummy", type=str)
-    parser.add_argument("--real_image_generator_path", default="./stylegan-256px-new.model", type=str)
+    parser.add_argument("--real_image_generator_path", default="./Data/stylegan-256px-new.model", type=str)
+    parser.add_argument("--data-root", default="~/Data/Datasets/Flickr-Face-HQ", type=str)
 
     # training
     parser.add_argument("--epochs", default=300, type=int)

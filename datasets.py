@@ -90,7 +90,7 @@ class SketchDataLoader(DataLoader):
             for real_image in iterator:
                 edges = self.edge_detector(real_image)
                 sketch = self.simplifier(edges.to(self.device)).repeat([1, 3, 1, 1])
-                yield torch.cat([sketch, real_image.to(self.device)], dim=3)
+                yield (torch.cat([sketch, real_image.to(self.device)], dim=3) - .5) / .5
 
         return _iter_wrapper(iterator)
 

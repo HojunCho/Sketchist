@@ -45,7 +45,6 @@ class RealImageGenerator(object):
         )
 
         image.clamp_(min=-1, max=1)
-        image.add_(1).div_(2 + 1e-5)
 
         return image, state
 
