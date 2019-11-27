@@ -18,7 +18,6 @@ import torchvision.utils as vutils
 from tensorboardX import SummaryWriter
 from tqdm import tqdm, trange
 
-from model import Generator, Discriminator
 from datasets import SketchDataLoader
 
 
@@ -139,8 +138,6 @@ def main(args):
             # Generate fake image batch with G
             emb_sketch=real[:,:,:,:real.size(-1)//2]
             emb_sketch=emb_sketch.reshape(-1,3*64*64)
-            # emb_sketch=emb_sketch.type(torch.FloatTensor)
-            # print(emb_sketch.shape)
             emb_sketch=Embedding(emb_sketch,args.emb_dim)
             fake = netG(noise,emb_sketch)
             label.fill_(fake_label)
@@ -187,13 +184,16 @@ def main(args):
             loss_log.set_description_str(str)
 
             ####It needs debuging
-            if niter % 500 ==0 or args.debug:
+            if niter % 400 ==0 or args.debug:
                 eval_niter+=1
                 target_sketch=real[0:args.eval_N,:,:,:real.size(-1)].unsqueeze(0) #(1,3,64,64)
-                target_sketch=target_sketch.view(-1,3*64*64)
-                emb_target=Embedding(target_sketch,args.emb_dim)
+                target_sketch_=target_sketch.view(-1,3*64*64)
+                target_sketch=target_sketch.squeeze()[:,:,:,:target_sketch.size(-1)//2]
+                emb_target=Embedding(target_sketch_,args.emb_dim)
                 z = torch.rand(args.eval_N, args.z_dim).to(device)
                 fake = netG(z,emb_target[:args.eval_N])
+                # Compare sketchs with output images
+                fake=torch.cat([fake,target_sketch],-1)
                 x = vutils.make_grid(fake, normalize=True, scale_each=True)
                 writer.add_image('Image', x, eval_niter)
         
@@ -217,8 +217,8 @@ if __name__ == "__main__":
     parser.add_argument("--d_iter", default=4, type=int, help="number of discriminator iter")
     parser.add_argument("--g_lr", default=2e-4, type=float, help="g lr")
     parser.add_argument("--d_lr", default=4e-6, type=float, help="d lr")
-    parser.add_argument("--g_beta", default=0.5, type=float, help="g beta")
-    parser.add_argument("--d_beta", default=0.5, type=float, help="d beta")
+    parser.add_argument("--g_beta", default=0.9, type=float, help="g beta")
+    parser.add_argument("--d_beta", default=0.9, type=float, help="d beta")
     #evaluation
     parser.add_argument("--eval_N", default=10, type=int, help="N")
     parser.add_argument("--eval_iterations", default=500, type=int, help="eval iteration")
