@@ -10,4 +10,4 @@ def mask_image(image: torch.Tensor) -> torch.Tensor:
 def random_uniform(
     r1: int, r2: int, batch: int, dim: int, device: torch.device
 ) -> torch.Tensor:
-    return ((r1 - r2) * torch.rand(batch, dim) + r2).to(device)
+    return torch.randn(batch, dim).to(device)
