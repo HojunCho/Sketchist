@@ -14,8 +14,9 @@ from torch.autograd import Variable, grad
 from torch.optim import RMSprop  # type: ignore
 from tqdm import tqdm, trange  # type: ignore
 
+from datasets import FFHQ
 from datasets import SketchDataLoader
-from model import Discriminator, Generator
+from model import Discriminator, Generator, RealImageGenerator
 from utils import mask_image, random_uniform
 
 
@@ -60,9 +61,9 @@ def main(args: argparse.Namespace) -> None:
         root="~/Data/Datasets/Flickr-Face-HQ",
         train=not args.debug,
         sketch_type="XDoG",
-        size=64,
+        size=256,
         size_from="thumbs",
-        batch_size=args.batch_size,
+        batch_size=args.train_batch_size,
         shuffle=True,
         num_workers=2,
         device=device,
@@ -71,15 +72,18 @@ def main(args: argparse.Namespace) -> None:
         root="~/Data/Datasets/Flickr-Face-HQ",
         train=False,
         sketch_type="XDoG",
-        size=64,
+        size=256,
         size_from="thumbs",
-        batch_size=args.batch_size,
+        batch_size=args.eval_batch_size,
         shuffle=True,
         num_workers=2,
         device=device,
     )
 
-    netG = Generator(args.z_dim).to(device)
+    realImageG = RealImageGenerator(
+        path=args.real_image_generator_path, size=256, device=device
+    )
+    netG = Generator().to(device)
     # netG.load_state_dict(torch.load("./.dummy/keep/g_10_ninth.pt"))
     netD = Discriminator().to(device)
     # netD.load_state_dict(torch.load("./.dummy/keep/d_10_ninth.pt"))
@@ -130,7 +134,10 @@ def main(args: argparse.Namespace) -> None:
 
             ## Train with all-fake batch, Generate batch of latent vectors, then fake batch
             noise = random_uniform(-1, 1, b_size, args.z_dim, device)
-            fake = netG(noise)
+            with torch.no_grad():
+                fake, hidden = realImageG.generate(noise)
+            fake_sketch = netG(hidden)
+            fake = torch.cat([fake_sketch, fake], dim=-1)
             fake_output = torch.mean(netD(fake.detach()).view(-1))
 
             gradient_penalty, norm = get_gradient_penalty(
@@ -176,7 +183,11 @@ def main(args: argparse.Namespace) -> None:
                 # on the same data
                 for i in range(fixed_sketch.size(0)):
                     z = random_uniform(-1, 1, args.eval_N, args.z_dim, device)
-                    initial_sketch = netG(z)
+                    _, hidden = realImageG.generate(z)
+                    initial_sketch = netG(hidden)
+                    initial_sketch = torch.cat(
+                        [initial_sketch, torch.zeros_like(initial_sketch)], dim=-1
+                    )
                     initial_sketch_kl_loss = mse_criterion(
                         mask_image(initial_sketch),
                         fixed_sketch[i].unsqueeze(0).repeat(args.eval_N, 1, 1, 1),
@@ -198,14 +209,18 @@ def main(args: argparse.Namespace) -> None:
                     netD.zero_grad()
                     optimizer.zero_grad()
 
-                    fake = netG(z)
+                    fake, hidden = realImageG.generate(z)
+                    fake_sketch = netG(hidden)
+                    fake = torch.cat([fake_sketch, fake], dim=-1)
                     output = netD(fake).view(-1)
                     errKL = kl_criterion(mask_image(fake), fixed_sketch)
                     errG = (args.eval_lambda * -torch.mean(output)) + errKL
                     errG.backward()
                     optimizer.step()
 
-                fake = netG(z)
+                fake, hidden = realImageG.generate(z)
+                fake_sketch = netG(hidden)
+                fake = torch.cat([fake_sketch, fake], dim=-1)
                 x = vutils.make_grid(fake, normalize=True, scale_each=True)
                 writer.add_image("Image/eval", x, eval_niter)
 
@@ -226,10 +241,12 @@ if __name__ == "__main__":
 
     parser.add_argument("--debug", dest="debug", action="store_true")
     parser.add_argument("--save_dir", default=".dummy", type=str)
+    parser.add_argument("--real_image_generator_path", default="./stylegan-256px-new.model", type=str)
 
     # training
     parser.add_argument("--epochs", default=300, type=int)
-    parser.add_argument("--batch_size", default=8, type=int, help="batch_size")
+    parser.add_argument("--train_batch_size", default=12, type=int, help="batch_size")
+    parser.add_argument("--eval_batch_size", default=2, type=int, help="batch_size")
     parser.add_argument("--g_lr", default=2e-4, type=float, help="g lr")
     parser.add_argument("--d_lr", default=2e-4, type=float, help="d lr")
     parser.add_argument("--train_lambda", default=0.01, type=float, help="lamda")
@@ -257,7 +274,7 @@ if __name__ == "__main__":
         "--eval_momentum", default=0.9, type=float, help="eval iteration"
     )
 
-    parser.add_argument("--z_dim", type=int, default=100)
+    parser.add_argument("--z_dim", type=int, default=512)
     parser.add_argument(
         "--lambda_gp",
         type=int,
