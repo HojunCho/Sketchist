@@ -8,8 +8,8 @@ z_dim = 512
 eval_N = 10
 lr = 0.1
 momentum = 0.9
-eval_iterations = 50
-eval_lambda = 0.01
+eval_iterations = 500
+eval_lambda = .01
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # device = torch.device("cpu")
@@ -68,7 +68,7 @@ def generate(sketch: torch.Tensor, plot=False) -> torch.Tensor:
     z = torch.stack(z_list, dim=0).requires_grad_(True)
     z_as_params = [z]
     optimizer = torch.optim.SGD(z_as_params, lr=lr, momentum=momentum)
-    for _ in range(eval_iterations):
+    for i in range(eval_iterations):
         netRealG.generator.zero_grad()
         netRealD.discriminator.zero_grad()
         netG.zero_grad()
@@ -76,15 +76,17 @@ def generate(sketch: torch.Tensor, plot=False) -> torch.Tensor:
         optimizer.zero_grad()
 
         fake, states = netRealG.generate(z)
-        output = netRealD.discriminate(fake).view(-1)
+        output = torch.sigmoid(netRealD.discriminate(fake)).view(-1)
         fake = torch.cat([netG(states), fake], dim=-1)
-        if plot:
-            show_images(torch.cat([sketch.unsqueeze(0), fake], dim=0))
-        output += netD(fake).view(-1)
+
+        # output += netD(fake).view(-1)
         errKL = kl_criterion(fake[:, :, :, :256], sketch.unsqueeze(0)[:, :, :, :256])
         errG = (eval_lambda * -torch.mean(output)) + errKL
         errG.backward()
         optimizer.step()
+
+        if plot and i % 100 == 0:
+            show_images(torch.cat([sketch.unsqueeze(0), fake], dim=0))
 
 
     fake, states = netRealG.generate(z)
