@@ -14,8 +14,7 @@ from torch.autograd import Variable, grad
 from torch.optim import RMSprop  # type: ignore
 from tqdm import tqdm, trange  # type: ignore
 
-from datasets import FFHQ
-from datasets import SketchDataLoader
+from datasets import FFHQ, SketchDataLoader
 from model import Discriminator, Generator, RealImageGenerator
 from utils import mask_image, random_uniform
 
@@ -140,7 +139,6 @@ def main(args: argparse.Namespace) -> None:
             fake = torch.cat([fake_sketch, fake], dim=-1)
             fake_output = torch.mean(netD(fake.detach()).view(-1))
 
-
             gradient_penalty, norm = get_gradient_penalty(
                 netD, real.data, fake.data, device
             )
@@ -202,9 +200,7 @@ def main(args: argparse.Namespace) -> None:
 
                 z = torch.stack(z_list, dim=0)
                 z_as_params = [z]
-                optimizer = torch.optim.SGD(
-                    z_as_params, lr=args.eval_lr, momentum=args.eval_momentum
-                )
+                optimizer = torch.optim.Adam(z_as_params)
                 for _ in range(args.eval_iterations):
                     netG.zero_grad()
                     netD.zero_grad()
@@ -222,7 +218,7 @@ def main(args: argparse.Namespace) -> None:
                 fake, hidden = realImageG.generate(z)
                 fake_sketch = netG(hidden)
                 fake = torch.cat([fake_sketch, fake], dim=-1)
-                x = vutils.make_grid(fake * .5 + .5)
+                x = vutils.make_grid(fake * 0.5 + 0.5)
                 writer.add_image("Image/eval", x, eval_niter)
 
         if epoch % 10 == 0 or args.debug:
@@ -242,8 +238,14 @@ if __name__ == "__main__":
 
     parser.add_argument("--debug", dest="debug", action="store_true")
     parser.add_argument("--save_dir", default=".dummy", type=str)
-    parser.add_argument("--real_image_generator_path", default="./Data/stylegan-256px-new.model", type=str)
-    parser.add_argument("--data-root", default="~/Data/Datasets/Flickr-Face-HQ", type=str)
+    parser.add_argument(
+        "--real_image_generator_path",
+        default="./Data/stylegan-256px-new.model",
+        type=str,
+    )
+    parser.add_argument(
+        "--data-root", default="~/Data/Datasets/Flickr-Face-HQ", type=str
+    )
 
     # training
     parser.add_argument("--epochs", default=300, type=int)
