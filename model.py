@@ -2,6 +2,7 @@ import math
 import torch, torchvision
 import torch.nn as nn
 from StyleBasedGAN import StyledGenerator
+from StyleBasedGAN import Discriminator as StyledDiscriminator
 
 class RealImageGenerator(object):
     def __init__(self, path='Data/stylegan-256px-new.model', size=256, device='cuda'):
@@ -39,7 +40,6 @@ class RealImageGenerator(object):
         image, state = self.generator(
             codes,
             step=self.step,
-            alpha=1,
             mean_style=self.mean_style,
             style_weight=0.7
         )
@@ -56,6 +56,27 @@ class RealImageGenerator(object):
             return image, state
         else:
             return image
+
+class RealImageDiscriminator(object):
+    def __init__(self, path='Data/stylegan-256px-new.model', size=256, device='cuda'):
+        self.device = device
+        self.size = size
+
+        self.discriminator = StyledDiscriminator(from_rgb_activate=True).to(device)
+        self.discriminator.load_state_dict(torch.load(path, map_location=device)['discriminator'])
+        self.discriminator.train()
+
+    @property
+    def step(self):
+        return int(math.log(self.size, 2)) - 2
+
+    def discriminate(self, images):
+        out = self.discriminator(
+            images,
+            step=self.step
+        )
+
+        return out
 
 # Input dim :(Batch, 100*100 ~ U[-1,1])
 # Output dim: (Batch, channel:3, Height=64, Width=128)
