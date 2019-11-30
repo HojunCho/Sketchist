@@ -13,9 +13,7 @@ app = Flask(__name__)
 to_img = transforms.ToPILImage()
 to_tensor = transforms.ToTensor()
 
-
-# command to run the API with a hot reload on save. curl command sends a post request with the file to the API endpoint
-# FLASK_APP=./api.py FLASK_DEBUG=1 flask run
+# make api
 # curl -F "sketch=@/home/jeff/Sketchist/sketch.jpg" http://localhost:5000/generate > out.jpg
 
 
