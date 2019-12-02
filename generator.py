@@ -22,12 +22,15 @@ netD.load_state_dict(torch.load("./Data/d_10_checkpoint.pt", map_location=device
 
 kl_criterion = nn.MSELoss()
 
+
 def generate(sketch: torch.Tensor) -> torch.Tensor:
     global netG
     global kl_criterion
 
     # add space for the generated image to the tensor
     sketch = torch.cat((sketch, torch.zeros_like(sketch)), 2).to(device)
+    # TODO: are the first three channels correct
+    sketch = sketch[:3, :, :]
 
     z_list = []
 
@@ -65,6 +68,7 @@ def generate(sketch: torch.Tensor) -> torch.Tensor:
 
     return netRealG.generate(z)[0].cpu()
 
+
 if __name__ == "__main__":
     from datasets import SketchDataLoader
     import matplotlib.pyplot as plt
@@ -72,13 +76,13 @@ if __name__ == "__main__":
     import numpy as np
 
     def show_images(imgs: torch.Tensor):
-        imgs = make_grid(imgs * .5 + .5)
+        imgs = make_grid(imgs * 0.5 + 0.5)
         imgs = imgs.cpu().detach().numpy()
         plt.imshow(np.transpose(imgs, (1, 2, 0)))
         plt.show()
 
     test_loader = SketchDataLoader(
-        root='~/Data/Datasets/Flickr-Face-HQ',
+        root="~/Data/Datasets/Flickr-Face-HQ",
         train=False,
         sketch_type="XDoG",
         size=256,
@@ -89,9 +93,7 @@ if __name__ == "__main__":
         device=device,
     )
 
-    sketch = next(iter(test_loader))[0,:,:,:256]
+    sketch = next(iter(test_loader))[0, :, :, :256]
     show_images(sketch)
     image = generate(sketch)
     show_images(image)
-
-    

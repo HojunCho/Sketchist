@@ -10,7 +10,9 @@ const api = "http://localhost:5000/generate"
 const UploadImage: React.FC = () => {
     const [imgSrc, setImgSrc] = useState("")
     const [cropped, setCropped] = useState("")
+    const [generatedImg, setGeneratedImg] = useState()
     const cropper = useRef(null);
+
     return (
     <div>
         <input
@@ -39,14 +41,19 @@ const UploadImage: React.FC = () => {
           crop={(): void => setCropped(cropper.current.getCroppedCanvas().toDataURL())}
       />
         <img alt="cropped sketch" src={cropped} />
-                <Button variant="contained" color="primary" component="span" onClick={(): void =>
-                cropper.current.getCroppedCanvas().toBlob(blob => fetch(api, {
-                    method: 'post',
-                    headers: {'Content-Type': ''},
-                    body: blob,
-                }).then(response => console.log(response)))}>
+        <Button variant="contained" color="primary" component="span" onClick={(): void => {
+            let canvas = cropper.current.getCroppedCanvas()
+            canvas.width = 256
+            canvas.height = 256
+            canvas.toBlob(blob => fetch(api, {
+                method: 'post',
+                headers: {'Content-Type': 'image/*'},
+                body: blob,
+            }).then(response => response.blob()).then(img => {
+                setGeneratedImg(URL.createObjectURL(img))}))}}>
             Submit
         </Button>
+        <img src={generatedImg} />
     </div>
     )
 }
