@@ -11,5 +11,8 @@ install:
 activate:
 	@source .env/bin/activate
 
+api:
+	@FLASK_APP=./api.py FLASK_DEBUG=1 flask run
+
 clean:
 	@rm -r ./.dummy/*

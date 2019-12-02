@@ -1,14 +1,15 @@
 import torch
 from torch import nn
 
-from model import Discriminator, Generator, RealImageGenerator, RealImageDiscriminator
+from model import (Discriminator, Generator, RealImageDiscriminator,
+                   RealImageGenerator)
 from utils import mask_image, random_uniform
 
 z_dim = 512
 eval_N = 10
 lr = 0.1
 momentum = 0.9
-eval_iterations = 50
+eval_iterations = 500
 eval_lambda = 0.01
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -24,6 +25,7 @@ netD.load_state_dict(torch.load("./Data/d_10_checkpoint.pt", map_location=device
 
 kl_criterion = nn.MSELoss()
 
+
 def generate(sketch: torch.Tensor, plot=False) -> torch.Tensor:
     if plot:
         from torchvision.utils import make_grid
@@ -31,7 +33,7 @@ def generate(sketch: torch.Tensor, plot=False) -> torch.Tensor:
         import numpy as np
 
         def show_images(imgs: torch.Tensor):
-            imgs = make_grid(imgs * .5 + .5)
+            imgs = make_grid(imgs * 0.5 + 0.5)
             imgs = imgs.cpu().detach().numpy()
             plt.imshow(np.transpose(imgs, (1, 2, 0)))
             plt.show()
@@ -41,6 +43,8 @@ def generate(sketch: torch.Tensor, plot=False) -> torch.Tensor:
 
     # add space for the generated image to the tensor
     sketch = torch.cat((sketch, torch.zeros_like(sketch)), 2).to(device)
+    # TODO: are the first three channels correct
+    sketch = sketch[:3, :, :]
 
     z_list = []
 
@@ -86,18 +90,18 @@ def generate(sketch: torch.Tensor, plot=False) -> torch.Tensor:
         errG.backward()
         optimizer.step()
 
-
     fake, states = netRealG.generate(z)
     if plot:
         fake_sketch = torch.cat([netG(states), fake], dim=-1)
         show_images(torch.cat([sketch.unsqueeze(0), fake_sketch], dim=0))
     return fake.cpu()
 
+
 if __name__ == "__main__":
     from datasets import SketchDataLoader
 
     test_loader = SketchDataLoader(
-        root='~/Data/Datasets/Flickr-Face-HQ',
+        root="~/Data/Datasets/Flickr-Face-HQ",
         train=False,
         sketch_type="XDoG",
         size=256,
@@ -108,7 +112,5 @@ if __name__ == "__main__":
         device=device,
     )
 
-    sketch = next(iter(test_loader))[0,:,:,:256]
+    sketch = next(iter(test_loader))[0, :, :, :256]
     image = generate(sketch, plot=True)
-
-    
