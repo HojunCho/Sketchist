@@ -3,6 +3,7 @@ from typing import Any
 
 import torch
 from flask import Flask, Response, request, send_file
+from matplotlib import pyplot as plt
 from PIL import Image  # type: ignore
 from torchvision import transforms  # type: ignore
 
@@ -35,8 +36,10 @@ def generate() -> Any:
     img_io = BytesIO()
 
     # open the image from file -> generate image
-    img_ = to_tensor(Image.open(BytesIO(img)))
-    out = gen(img_)
+    im = Image.open(BytesIO(img))
+    im.show()
+    im = to_tensor(im)
+    out = gen(im)
     out = torch.squeeze(out)
 
     # convert to image and write to buffer
