@@ -40,7 +40,9 @@ def generate() -> Any:
     im = to_tensor(im)
     im = torch.cat((im, im, im))
     # im = 2 * ((im - im.min()) / (im.max() - im.min())) - 1
+    im = (im - 0.5) / 0.5
     out = gen(im)
+    out = out * 0.5 +  0.5
     out = torch.squeeze(out)
 
     # convert to image and write to buffer

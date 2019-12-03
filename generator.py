@@ -6,7 +6,7 @@ from model import (Discriminator, Generator, RealImageDiscriminator,
 from utils import mask_image, random_uniform
 
 z_dim = 512
-eval_N = 10
+eval_N = 20
 lr = 0.1
 momentum = 0.9
 eval_iterations = 500
