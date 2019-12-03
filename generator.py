@@ -43,8 +43,6 @@ def generate(sketch: torch.Tensor, plot=False) -> torch.Tensor:
 
     # add space for the generated image to the tensor
     sketch = torch.cat((sketch, torch.zeros_like(sketch)), 2).to(device)
-    # TODO: are the first three channels correct
-    sketch = sketch[1:, :, :]
 
     z_list = []
 

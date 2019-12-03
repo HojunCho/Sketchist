@@ -36,9 +36,10 @@ def generate() -> Any:
     img_io = BytesIO()
 
     # open the image from file -> generate image
-    im = Image.open(BytesIO(img))
-    im.show()
+    im = Image.open(BytesIO(img)).convert("L")
     im = to_tensor(im)
+    im = torch.cat((im, im, im))
+    # im = 2 * ((im - im.min()) / (im.max() - im.min())) - 1
     out = gen(im)
     out = torch.squeeze(out)
 
