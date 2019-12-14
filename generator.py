@@ -9,7 +9,7 @@ z_dim = 512
 eval_N = 20
 lr = 0.1
 momentum = 0.9
-eval_iterations = 500
+eval_iterations = 80
 eval_lambda = 0.01
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -17,16 +17,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 netRealG = RealImageGenerator(device=device)
 netG = Generator().to(device)
-netG.load_state_dict(torch.load("./Data/g_10_checkpoint.pt", map_location=device))
+netG.load_state_dict(torch.load("./Data/g_20_checkpoint.pt", map_location=device))
 
 netRealD = RealImageDiscriminator(device=device)
 netD = Discriminator().to(device)
-netD.load_state_dict(torch.load("./Data/d_10_checkpoint.pt", map_location=device))
+netD.load_state_dict(torch.load("./Data/d_20_checkpoint.pt", map_location=device))
 
 kl_criterion = nn.MSELoss()
 
 
-def generate(sketch: torch.Tensor, plot=False) -> torch.Tensor:
+def generate(sketch: torch.Tensor, plot=False, return_video=False) -> torch.Tensor:
     if plot:
         from torchvision.utils import make_grid
         import matplotlib.pyplot as plt
@@ -66,6 +66,8 @@ def generate(sketch: torch.Tensor, plot=False) -> torch.Tensor:
 
     if plot:
         show_images(torch.stack([sketch, initial_sketch[best_index]], dim=0))
+    if return_video:
+        video = []
 
     z = torch.stack(z_list, dim=0).requires_grad_(True)
     z_as_params = [z]
@@ -90,16 +92,29 @@ def generate(sketch: torch.Tensor, plot=False) -> torch.Tensor:
         if plot and i % 100 == 0:
             show_images(torch.cat([sketch.unsqueeze(0), fake], dim=0))
 
+        if return_video:
+            video.append(make_grid(torch.cat([sketch.unsqueeze(0), fake], dim=0) * 0.5 + 0.5))
+
     fake, states = netRealG.generate(z)
     if plot:
         fake_sketch = torch.cat([netG(states), fake], dim=-1)
         show_images(torch.cat([sketch.unsqueeze(0), fake_sketch], dim=0))
-    return fake.cpu()
+    
+    if return_video:
+        return fake.cpu(), torch.stack(video).cpu()
+    else:
+        return fake.cpu()
 
 
 if __name__ == "__main__":
     from datasets import SketchDataLoader
+    from torchvision.utils import make_grid
+    import matplotlib
+    import matplotlib.pyplot as plt
+    import matplotlib.animation as animation
+    import numpy as np
 
+    '''
     test_loader = SketchDataLoader(
         root="~/Data/Datasets/Flickr-Face-HQ",
         train=False,
@@ -113,4 +128,18 @@ if __name__ == "__main__":
     )
 
     sketch = next(iter(test_loader))[0, :, :, :256]
-    image = generate(sketch, plot=True)
+    '''
+    sketch = plt.imread("./samples/sketch3.png")[:,:,:3]
+    sketch = (torch.from_numpy(np.transpose(sketch, axes=[2, 0, 1])) - 0.5) / 0.5
+
+    image, video = generate(sketch, plot=True, return_video=True)
+    frames = []
+    fig = plt.figure()
+    for imgs in video:
+        imgs = imgs.cpu().detach().numpy()
+        frames.append([plt.imshow(np.transpose(imgs, (1, 2, 0)), animated=True)])
+
+    ani = animation.ArtistAnimation(fig, frames, interval=50, blit=True)
+    ani.save('./Data/iteration.gif', writer='imagemagick', fps=20)
+    plt.show()
+
